@@ -151,6 +151,7 @@ void EngineApp::tick()
   m_frameStats.totalSeconds = m_time->totalSeconds();
   m_frameStats.fps = m_time->fps();
   m_frameStats.entityCount = m_world ? static_cast<int32_t>(m_world->aliveCount()) : 0;
+  // movingCount is computed above only when world exists; default to 0 otherwise.
   if (!m_world) m_frameStats.movingCount = 0;
   m_frameStats.mouseX = m_input->mouseX();
   m_frameStats.mouseY = m_input->mouseY();
