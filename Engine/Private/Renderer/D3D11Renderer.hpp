@@ -43,6 +43,10 @@ public:
   // Draw call used by RenderSystem.
   void drawMesh(MeshHandle mesh, MaterialHandle material, const float* mvpRowMajor4x4, const float* tintRGBA);
 
+  // Debug draw (Step 6): draws a list of colored line vertices (line list).
+  void drawDebugLines(const void* vertices, uint32_t vertexStride, uint32_t vertexCount,
+                      const float* mvpRowMajor4x4);
+
 private:
   bool createDeviceAndSwapChain(const EngineConfig& cfg);
   bool createBackBufferTargets(int32_t width, int32_t height);
@@ -66,6 +70,8 @@ private:
   MaterialHandle m_defaultMaterial = kInvalidMaterial;
 
   Microsoft::WRL::ComPtr<ID3D11Buffer> m_cbPerObject;
+  Microsoft::WRL::ComPtr<ID3D11Buffer> m_debugLineVB;
+  uint32_t m_debugLineVBBytes = 0;
 
   int32_t m_width = 0;
   int32_t m_height = 0;

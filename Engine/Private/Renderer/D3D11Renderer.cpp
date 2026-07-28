@@ -318,6 +318,79 @@ void D3D11Renderer::drawMesh(MeshHandle meshH, MaterialHandle matH, const float*
   }
 }
 
+void D3D11Renderer::drawDebugLines(const void* vertices, uint32_t vertexStride, uint32_t vertexCount,
+                                  const float* mvpRowMajor4x4)
+{
+  if (!m_context || !m_device || !m_cbPerObject) return;
+  if (!vertices || vertexStride == 0 || vertexCount == 0) return;
+  if (m_defaultMaterial == kInvalidMaterial) return;
+
+  const Material* mat = tryGetMaterial(m_defaultMaterial);
+  if (!mat || !mat->program.vs || !mat->program.ps || !mat->program.inputLayout) return;
+
+  // Ensure dynamic VB capacity.
+  const uint32_t neededBytes = vertexStride * vertexCount;
+  if (!m_debugLineVB || m_debugLineVBBytes < neededBytes)
+  {
+    m_debugLineVB.Reset();
+    m_debugLineVBBytes = 0;
+
+    D3D11_BUFFER_DESC desc{};
+    desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    desc.ByteWidth = std::max<uint32_t>(neededBytes, 64 * 1024);
+    desc.Usage = D3D11_USAGE_DYNAMIC;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+
+    if (FAILED(m_device->CreateBuffer(&desc, nullptr, m_debugLineVB.GetAddressOf())))
+    {
+      return;
+    }
+    m_debugLineVBBytes = desc.ByteWidth;
+  }
+
+  D3D11_MAPPED_SUBRESOURCE mappedVB{};
+  if (FAILED(m_context->Map(m_debugLineVB.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedVB)))
+  {
+    return;
+  }
+  std::memcpy(mappedVB.pData, vertices, neededBytes);
+  m_context->Unmap(m_debugLineVB.Get(), 0);
+
+  // Update constant buffer (MVP + tint=1).
+  struct alignas(16) PerObject
+  {
+    float mvp[16];
+    float tint[4];
+  };
+  D3D11_MAPPED_SUBRESOURCE mappedCB{};
+  if (SUCCEEDED(m_context->Map(m_cbPerObject.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedCB)))
+  {
+    PerObject cb{};
+    std::memcpy(cb.mvp, mvpRowMajor4x4, sizeof(cb.mvp));
+    cb.tint[0] = 1.0f; cb.tint[1] = 1.0f; cb.tint[2] = 1.0f; cb.tint[3] = 1.0f;
+    std::memcpy(mappedCB.pData, &cb, sizeof(PerObject));
+    m_context->Unmap(m_cbPerObject.Get(), 0);
+  }
+
+  ID3D11RenderTargetView* rtvs[] = { m_rtv.Get() };
+  m_context->OMSetRenderTargets(1, rtvs, m_dsv.Get());
+
+  const UINT stride = vertexStride;
+  const UINT offset = 0;
+  ID3D11Buffer* vb = m_debugLineVB.Get();
+
+  m_context->IASetInputLayout(mat->program.inputLayout.Get());
+  m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINELIST);
+  m_context->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
+
+  ID3D11Buffer* cbs[] = { m_cbPerObject.Get() };
+  m_context->VSSetConstantBuffers(0, 1, cbs);
+  m_context->VSSetShader(mat->program.vs.Get(), nullptr, 0);
+  m_context->PSSetShader(mat->program.ps.Get(), nullptr, 0);
+
+  m_context->Draw(vertexCount, 0);
+}
+
 void D3D11Renderer::present()
 {
   if (m_swapChain) m_swapChain->Present(1, 0);
@@ -420,6 +493,8 @@ bool D3D11Renderer::createDefaultResources(const EngineConfig& cfg)
 void D3D11Renderer::destroyDefaultResources()
 {
   m_cbPerObject.Reset();
+  m_debugLineVB.Reset();
+  m_debugLineVBBytes = 0;
   m_materials.clear();
   m_meshes.clear();
   m_defaultTriangle = kInvalidMesh;

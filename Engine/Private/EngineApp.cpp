@@ -9,6 +9,8 @@
 #include "ECS/Components/Velocity.hpp"
 #include "ECS/Components/MeshRenderer.hpp"
 #include "ECS/Systems/RenderSystem.hpp"
+#include "ECS/Components/Collider.hpp"
+#include "ECS/Systems/CollisionSystem.hpp"
 
 #include <Windows.h>
 #include <cmath>
@@ -62,6 +64,7 @@ bool EngineApp::init(const EngineConfig& cfg)
   }
 
   m_renderSystem = new RenderSystem();
+  m_collisionSystem = new CollisionSystem();
 
   m_world = new World();
   m_testEntities.clear();
@@ -100,6 +103,10 @@ bool EngineApp::init(const EngineConfig& cfg)
       mr.tintB = (i % 5) ? 0.8f : 0.4f;
       mr.tintA = 1.0f;
       m_world->add<MeshRenderer>(e, mr);
+
+      // Step 6: give renderable entities an AABB collider.
+      // Keep extents small so collisions happen with motion.
+      m_world->add<Collider>(e, Collider::makeAabb(0.03f, 0.03f, 0.01f));
     }
 
     m_testEntities.push_back(e);
@@ -167,6 +174,8 @@ void EngineApp::tick()
   // movingCount is computed above only when world exists; default to 0 otherwise.
   if (!m_world) m_frameStats.movingCount = 0;
   m_frameStats.drawCount = 0;
+  m_frameStats.collisionPairs = 0;
+  m_frameStats.collisionOverlaps = 0;
   m_frameStats.mouseX = m_input->mouseX();
   m_frameStats.mouseY = m_input->mouseY();
   m_frameStats.mouseDeltaX = m_input->mouseDeltaX();
@@ -175,6 +184,12 @@ void EngineApp::tick()
 
   m_renderer->beginFrame();
   m_renderer->clear(0.05f, 0.10f, 0.20f, 1.0f);
+  if (m_world && m_collisionSystem)
+  {
+    const auto cs = m_collisionSystem->update(*m_world, *m_renderer, m_cfg.width, m_cfg.height);
+    m_frameStats.collisionPairs = cs.pairChecks;
+    m_frameStats.collisionOverlaps = cs.overlaps;
+  }
   if (m_world && m_renderSystem)
   {
     m_frameStats.drawCount = m_renderSystem->render(*m_world, *m_renderer, m_cfg.width, m_cfg.height);
@@ -213,6 +228,9 @@ void EngineApp::shutdown()
 
   delete m_renderSystem;
   m_renderSystem = nullptr;
+
+  delete m_collisionSystem;
+  m_collisionSystem = nullptr;
 
   delete m_world;
   m_world = nullptr;

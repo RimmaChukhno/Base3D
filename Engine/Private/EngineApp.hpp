@@ -12,6 +12,7 @@ class TimeSystem;
 class World;
 struct EntityId;
 class RenderSystem;
+class CollisionSystem;
 
 class EngineApp
 {
@@ -42,5 +43,6 @@ private:
   std::vector<EntityId> m_testEntities;
 
   RenderSystem* m_renderSystem = nullptr;
+  CollisionSystem* m_collisionSystem = nullptr;
 };
 
