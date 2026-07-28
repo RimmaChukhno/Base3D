@@ -1,0 +1,47 @@
+# ---- Build outputs ----
+/build/
+/build-*/
+/out/
+/bin/
+/lib/
+
+# ---- CMake ----
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+
+# ---- Visual Studio / MSVC ----
+/.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.VC.opendb
+*.ipch
+*.pdb
+*.ilk
+*.idb
+*.tlog
+*.obj
+*.pch
+*.res
+*.aps
+*.manifest
+*.exp
+*.lib
+*.dll
+*.exe
+
+# ---- Diagnostics / dumps ----
+*.log
+*.dmp
+
+# ---- OS ----
+Thumbs.db
+Desktop.ini
+
+# ---- txt ----
+*.txt
