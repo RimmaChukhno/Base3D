@@ -1,4 +1,4 @@
-#include "D3D11Renderer.h"
+#include "D3D11Renderer.hpp"
 
 #include <Windows.h>
 

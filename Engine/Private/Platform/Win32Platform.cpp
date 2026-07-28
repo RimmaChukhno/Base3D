@@ -1,4 +1,4 @@
-#include "Win32Platform.h"
+#include "Win32Platform.hpp"
 
 #include <Windows.h>
 

@@ -1,8 +1,8 @@
-#include "EngineApp.h"
+#include "EngineApp.hpp"
 
-#include "Renderer/D3D11Renderer.h"
-#include "Input/InputManager.h"
-#include "Time/TimeSystem.h"
+#include "Renderer/D3D11Renderer.hpp"
+#include "Input/InputManager.hpp"
+#include "Time/TimeSystem.hpp"
 
 #include <Windows.h>
 

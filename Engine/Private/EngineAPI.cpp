@@ -1,6 +1,6 @@
-#include "EngineAPI.h"
+#include "EngineAPI.hpp"
 
-#include "EngineApp.h"
+#include "EngineApp.hpp"
 
 struct EngineHandle
 {
