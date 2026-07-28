@@ -3,11 +3,11 @@
 #include <Windows.h>
 
 #include <d3d11.h>
-#include <d3dcompiler.h>
 #include <dxgi.h>
 #include <array>
 #include <string>
 #include <cstring>
+#include <cstdint>
 
 #include <DirectXMath.h>
 
@@ -25,52 +25,13 @@ static void debugOut(const wchar_t* msg)
 #endif
 }
 
-static Microsoft::WRL::ComPtr<ID3DBlob> compileFromFile(
-  const std::wstring& filePath,
-  const char* entryPoint,
-  const char* target)
-{
-  UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
-#if defined(_DEBUG)
-  flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#endif
-
-  Microsoft::WRL::ComPtr<ID3DBlob> bytecode;
-  Microsoft::WRL::ComPtr<ID3DBlob> errors;
-
-  const HRESULT hr = D3DCompileFromFile(
-    filePath.c_str(),
-    nullptr,
-    D3D_COMPILE_STANDARD_FILE_INCLUDE,
-    entryPoint,
-    target,
-    flags,
-    0,
-    bytecode.GetAddressOf(),
-    errors.GetAddressOf()
-  );
-
-  if (FAILED(hr))
-  {
-    if (errors)
-    {
-      const char* err = static_cast<const char*>(errors->GetBufferPointer());
-      OutputDebugStringA(err);
-    }
-    debugOut(L"[D3D11Renderer] Shader compile failed.\n");
-    return {};
-  }
-
-  return bytecode;
-}
-
 bool D3D11Renderer::init(const EngineConfig& cfg)
 {
   if (!createDeviceAndSwapChain(cfg)) return false;
   m_width = cfg.width;
   m_height = cfg.height;
   if (!createBackBufferTargets(cfg.width, cfg.height)) return false;
-  if (!createTestTriangleResources(cfg)) return false;
+  if (!createDefaultResources(cfg)) return false;
   return true;
 }
 
@@ -82,7 +43,7 @@ void D3D11Renderer::shutdown()
     m_context->Flush();
   }
 
-  destroyTestTriangleResources();
+  destroyDefaultResources();
 
   m_dsv.Reset();
   m_depthTex.Reset();
@@ -202,93 +163,62 @@ bool D3D11Renderer::createBackBufferTargets(int32_t width, int32_t height)
   return true;
 }
 
-bool D3D11Renderer::createTestTriangleResources(const EngineConfig& cfg)
+MeshHandle D3D11Renderer::createMesh(
+  const void* vertices,
+  uint32_t vertexStride,
+  uint32_t vertexCount,
+  const void* indices,
+  DXGI_FORMAT indexFormat,
+  uint32_t indexCount)
 {
-  const std::wstring shaderPath = std::wstring(cfg.assetsRoot) + L"\\Shaders\\Triangle.hlsl";
+  if (!m_device) return kInvalidMesh;
+  if (!vertices || vertexStride == 0 || vertexCount == 0) return kInvalidMesh;
 
-  Microsoft::WRL::ComPtr<ID3DBlob> vsBytecode = compileFromFile(shaderPath, "VSMain", "vs_5_0");
-  if (!vsBytecode) return false;
-
-  Microsoft::WRL::ComPtr<ID3DBlob> psBytecode = compileFromFile(shaderPath, "PSMain", "ps_5_0");
-  if (!psBytecode) return false;
-
-  HRESULT hr = m_device->CreateVertexShader(
-    vsBytecode->GetBufferPointer(),
-    vsBytecode->GetBufferSize(),
-    nullptr,
-    m_vs.GetAddressOf()
-  );
-  if (FAILED(hr)) return false;
-
-  hr = m_device->CreatePixelShader(
-    psBytecode->GetBufferPointer(),
-    psBytecode->GetBufferSize(),
-    nullptr,
-    m_ps.GetAddressOf()
-  );
-  if (FAILED(hr)) return false;
-
-  const D3D11_INPUT_ELEMENT_DESC layout[] = {
-    { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
-    { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-  };
-
-  hr = m_device->CreateInputLayout(
-    layout,
-    static_cast<UINT>(std::size(layout)),
-    vsBytecode->GetBufferPointer(),
-    vsBytecode->GetBufferSize(),
-    m_inputLayout.GetAddressOf()
-  );
-  if (FAILED(hr)) return false;
-
-  struct Vertex
-  {
-    float px, py, pz;
-    float r, g, b, a;
-  };
-
-  const Vertex verts[3] = {
-    {  0.0f,  0.5f, 0.0f, 1.f, 0.f, 0.f, 1.f },
-    {  0.5f, -0.5f, 0.0f, 0.f, 1.f, 0.f, 1.f },
-    { -0.5f, -0.5f, 0.0f, 0.f, 0.f, 1.f, 1.f },
-  };
+  Mesh mesh{};
+  mesh.vertexStride = vertexStride;
+  mesh.vertexCount = vertexCount;
+  mesh.indexFormat = indexFormat;
+  mesh.indexCount = indexCount;
 
   D3D11_BUFFER_DESC vbDesc{};
   vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-  vbDesc.ByteWidth = static_cast<UINT>(sizeof(verts));
+  vbDesc.ByteWidth = vertexStride * vertexCount;
   vbDesc.Usage = D3D11_USAGE_IMMUTABLE;
 
   D3D11_SUBRESOURCE_DATA vbData{};
-  vbData.pSysMem = verts;
+  vbData.pSysMem = vertices;
 
-  hr = m_device->CreateBuffer(&vbDesc, &vbData, m_vb.GetAddressOf());
-  if (FAILED(hr)) return false;
+  HRESULT hr = m_device->CreateBuffer(&vbDesc, &vbData, mesh.vb.GetAddressOf());
+  if (FAILED(hr)) return kInvalidMesh;
 
-  struct alignas(16) CBPerFrame
+  if (indices && indexCount > 0)
   {
-    DirectX::XMFLOAT4X4 mvp;
-  };
+    const uint32_t indexStride = (indexFormat == DXGI_FORMAT_R16_UINT) ? 2u : 4u;
 
-  D3D11_BUFFER_DESC cbDesc{};
-  cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-  cbDesc.ByteWidth = sizeof(CBPerFrame);
-  cbDesc.Usage = D3D11_USAGE_DYNAMIC;
-  cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    D3D11_BUFFER_DESC ibDesc{};
+    ibDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    ibDesc.ByteWidth = indexStride * indexCount;
+    ibDesc.Usage = D3D11_USAGE_IMMUTABLE;
 
-  hr = m_device->CreateBuffer(&cbDesc, nullptr, m_cbPerFrame.GetAddressOf());
-  if (FAILED(hr)) return false;
+    D3D11_SUBRESOURCE_DATA ibData{};
+    ibData.pSysMem = indices;
 
-  return true;
+    hr = m_device->CreateBuffer(&ibDesc, &ibData, mesh.ib.GetAddressOf());
+    if (FAILED(hr)) return kInvalidMesh;
+  }
+
+  const MeshHandle handle = static_cast<MeshHandle>(m_meshes.size());
+  m_meshes.push_back(std::move(mesh));
+  return handle;
 }
 
-void D3D11Renderer::destroyTestTriangleResources()
+MaterialHandle D3D11Renderer::createMaterial(const ShaderProgram& program)
 {
-  m_cbPerFrame.Reset();
-  m_vb.Reset();
-  m_inputLayout.Reset();
-  m_ps.Reset();
-  m_vs.Reset();
+  Material m{};
+  m.program = program;
+  const MaterialHandle h = static_cast<MaterialHandle>(m_materials.size());
+  m_materials.push_back(std::move(m));
+  return h;
 }
 
 void D3D11Renderer::beginFrame()
@@ -308,9 +238,28 @@ void D3D11Renderer::clear(float r, float g, float b, float a)
   if (m_dsv) m_context->ClearDepthStencilView(m_dsv.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 }
 
-void D3D11Renderer::drawTestTriangle(float totalSeconds, float translateX, float translateY)
+const Mesh* D3D11Renderer::tryGetMesh(MeshHandle h) const
 {
-  if (!m_context || !m_vs || !m_ps || !m_inputLayout || !m_vb || !m_cbPerFrame) return;
+  if (h == kInvalidMesh) return nullptr;
+  if (h >= m_meshes.size()) return nullptr;
+  return &m_meshes[h];
+}
+
+const Material* D3D11Renderer::tryGetMaterial(MaterialHandle h) const
+{
+  if (h == kInvalidMaterial) return nullptr;
+  if (h >= m_materials.size()) return nullptr;
+  return &m_materials[h];
+}
+
+void D3D11Renderer::drawMesh(MeshHandle meshH, MaterialHandle matH, const float* mvpRowMajor4x4, const float* tintRGBA)
+{
+  if (!m_context || !m_cbPerObject) return;
+  const Mesh* mesh = tryGetMesh(meshH);
+  const Material* mat = tryGetMaterial(matH);
+  if (!mesh || !mat) return;
+  if (!mat->program.vs || !mat->program.ps || !mat->program.inputLayout) return;
+  if (!mesh->vb) return;
 
   ID3D11RenderTargetView* rtvs[] = { m_rtv.Get() };
   m_context->OMSetRenderTargets(1, rtvs, m_dsv.Get());
@@ -324,39 +273,49 @@ void D3D11Renderer::drawTestTriangle(float totalSeconds, float translateX, float
   vp.MaxDepth = 1.0f;
   m_context->RSSetViewports(1, &vp);
 
-  struct alignas(16) CBPerFrame
+  struct alignas(16) PerObject
   {
-    DirectX::XMFLOAT4X4 mvp;
+    float mvp[16];
+    float tint[4];
   };
 
   D3D11_MAPPED_SUBRESOURCE mapped{};
-  if (SUCCEEDED(m_context->Map(m_cbPerFrame.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+  if (SUCCEEDED(m_context->Map(m_cbPerObject.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
   {
-    const float t = totalSeconds;
-    const DirectX::XMMATRIX rot = DirectX::XMMatrixRotationZ(t);
-    const DirectX::XMMATRIX tr = DirectX::XMMatrixTranslation(translateX, translateY, 0.0f);
-    const DirectX::XMMATRIX mvp = rot * tr;
-    CBPerFrame cb{};
-    DirectX::XMStoreFloat4x4(&cb.mvp, mvp);
-    std::memcpy(mapped.pData, &cb, sizeof(CBPerFrame));
-    m_context->Unmap(m_cbPerFrame.Get(), 0);
+    PerObject cb{};
+    std::memcpy(cb.mvp, mvpRowMajor4x4, sizeof(cb.mvp));
+    std::memcpy(cb.tint, tintRGBA, sizeof(cb.tint));
+    std::memcpy(mapped.pData, &cb, sizeof(PerObject));
+    m_context->Unmap(m_cbPerObject.Get(), 0);
   }
 
-  const UINT stride = sizeof(float) * (3 + 4);
+  const UINT stride = mesh->vertexStride;
   const UINT offset = 0;
-  ID3D11Buffer* vb = m_vb.Get();
+  ID3D11Buffer* vb = mesh->vb.Get();
 
-  m_context->IASetInputLayout(m_inputLayout.Get());
-  m_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+  m_context->IASetInputLayout(mat->program.inputLayout.Get());
+  m_context->IASetPrimitiveTopology(mesh->topology);
   m_context->IASetVertexBuffers(0, 1, &vb, &stride, &offset);
 
-  m_context->VSSetShader(m_vs.Get(), nullptr, 0);
-  ID3D11Buffer* cbs[] = { m_cbPerFrame.Get() };
+  if (mesh->ib && mesh->indexCount > 0)
+  {
+    m_context->IASetIndexBuffer(mesh->ib.Get(), mesh->indexFormat, 0);
+  }
+
+  ID3D11Buffer* cbs[] = { m_cbPerObject.Get() };
   m_context->VSSetConstantBuffers(0, 1, cbs);
 
-  m_context->PSSetShader(m_ps.Get(), nullptr, 0);
+  m_context->VSSetShader(mat->program.vs.Get(), nullptr, 0);
+  m_context->PSSetShader(mat->program.ps.Get(), nullptr, 0);
 
-  m_context->Draw(3, 0);
+  if (mesh->ib && mesh->indexCount > 0)
+  {
+    m_context->DrawIndexed(mesh->indexCount, 0, 0);
+  }
+  else
+  {
+    m_context->Draw(mesh->vertexCount, 0);
+  }
 }
 
 void D3D11Renderer::present()
@@ -394,5 +353,77 @@ void D3D11Renderer::resize(int32_t width, int32_t height)
   }
 
   (void)createBackBufferTargets(width, height);
+}
+
+bool D3D11Renderer::createDefaultResources(const EngineConfig& cfg)
+{
+  if (!m_device || !m_context) return false;
+
+  ShaderManager shaders(m_device.Get());
+
+  const D3D11_INPUT_ELEMENT_DESC layout[] = {
+    { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
+    { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+  };
+
+  const std::wstring shaderPath = std::wstring(cfg.assetsRoot) + L"\\Shaders\\MeshColor.hlsl";
+  ShaderProgram program = shaders.createProgramFromFile(
+    shaderPath,
+    "VSMain",
+    "PSMain",
+    layout,
+    static_cast<uint32_t>(std::size(layout))
+  );
+  if (!program.vs || !program.ps || !program.inputLayout) return false;
+
+  m_defaultMaterial = createMaterial(program);
+
+  struct Vertex
+  {
+    float px, py, pz;
+    float r, g, b, a;
+  };
+
+  const Vertex triVerts[3] = {
+    {  0.0f,  0.5f, 0.0f, 1.f, 0.f, 0.f, 1.f },
+    {  0.5f, -0.5f, 0.0f, 0.f, 1.f, 0.f, 1.f },
+    { -0.5f, -0.5f, 0.0f, 0.f, 0.f, 1.f, 1.f },
+  };
+  m_defaultTriangle = createMesh(triVerts, sizeof(Vertex), 3, nullptr, DXGI_FORMAT_UNKNOWN, 0);
+
+  const Vertex quadVerts[4] = {
+    { -0.5f,  0.5f, 0.0f, 1.f, 1.f, 0.f, 1.f },
+    {  0.5f,  0.5f, 0.0f, 0.f, 1.f, 1.f, 1.f },
+    {  0.5f, -0.5f, 0.0f, 1.f, 0.f, 1.f, 1.f },
+    { -0.5f, -0.5f, 0.0f, 1.f, 0.5f, 0.2f, 1.f },
+  };
+  const uint16_t quadIdx[6] = { 0, 1, 2, 0, 2, 3 };
+  m_defaultQuad = createMesh(quadVerts, sizeof(Vertex), 4, quadIdx, DXGI_FORMAT_R16_UINT, 6);
+
+  struct alignas(16) PerObject
+  {
+    float mvp[16];
+    float tint[4];
+  };
+
+  D3D11_BUFFER_DESC cbDesc{};
+  cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+  cbDesc.ByteWidth = sizeof(PerObject);
+  cbDesc.Usage = D3D11_USAGE_DYNAMIC;
+  cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+  HRESULT hr = m_device->CreateBuffer(&cbDesc, nullptr, m_cbPerObject.GetAddressOf());
+  if (FAILED(hr)) return false;
+
+  return m_defaultTriangle != kInvalidMesh && m_defaultQuad != kInvalidMesh && m_defaultMaterial != kInvalidMaterial;
+}
+
+void D3D11Renderer::destroyDefaultResources()
+{
+  m_cbPerObject.Reset();
+  m_materials.clear();
+  m_meshes.clear();
+  m_defaultTriangle = kInvalidMesh;
+  m_defaultQuad = kInvalidMesh;
+  m_defaultMaterial = kInvalidMaterial;
 }
 

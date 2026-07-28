@@ -21,6 +21,7 @@ struct EngineFrameStats
   float fps;
   int32_t entityCount;
   int32_t movingCount;
+  int32_t drawCount;
   int32_t mouseX;
   int32_t mouseY;
   int32_t mouseDeltaX;

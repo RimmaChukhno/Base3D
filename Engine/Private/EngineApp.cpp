@@ -7,6 +7,8 @@
 #include "ECS/EntityId.hpp"
 #include "ECS/Components/Transform.hpp"
 #include "ECS/Components/Velocity.hpp"
+#include "ECS/Components/MeshRenderer.hpp"
+#include "ECS/Systems/RenderSystem.hpp"
 
 #include <Windows.h>
 #include <cmath>
@@ -47,13 +49,27 @@ bool EngineApp::init(const EngineConfig& cfg)
     return false;
   }
 
+  m_renderer = new D3D11Renderer();
+  if (!m_renderer->init(m_cfg))
+  {
+    delete m_renderer;
+    m_renderer = nullptr;
+    delete m_input;
+    m_input = nullptr;
+    delete m_time;
+    m_time = nullptr;
+    return false;
+  }
+
+  m_renderSystem = new RenderSystem();
+
   m_world = new World();
   m_testEntities.clear();
   m_testEntities.reserve(2000);
 
-  // Validation for Step 4:
-  // - Spawn N entities with Transform
-  // - Update them every frame (touch memory, prove iteration)
+  // Step 5 validation:
+  // - Spawn a lot of entities (ECS perf)
+  // - Render a subset via MeshRenderer (multiple meshes/materials)
   constexpr int kSpawnCount = 2000;
   for (int i = 0; i < kSpawnCount; ++i)
   {
@@ -64,7 +80,6 @@ bool EngineApp::init(const EngineConfig& cfg)
     t.pz = 0.0f;
     m_world->add<Transform>(e, t);
 
-    // Add Velocity to a subset to validate multi-component queries.
     if ((i % 3) == 0)
     {
       Velocity v{};
@@ -74,22 +89,20 @@ bool EngineApp::init(const EngineConfig& cfg)
       m_world->add<Velocity>(e, v);
     }
 
-    m_testEntities.push_back(e);
-  }
+    // Only some entities are renderable to keep the demo fast while proving the system.
+    if ((i % 10) == 0)
+    {
+      MeshRenderer mr{};
+      mr.material = m_renderer->defaultColorMaterial();
+      mr.mesh = ((i % 20) == 0) ? m_renderer->defaultQuadMesh() : m_renderer->defaultTriangleMesh();
+      mr.tintR = (i % 2) ? 1.0f : 0.4f;
+      mr.tintG = (i % 3) ? 0.9f : 0.4f;
+      mr.tintB = (i % 5) ? 0.8f : 0.4f;
+      mr.tintA = 1.0f;
+      m_world->add<MeshRenderer>(e, mr);
+    }
 
-  m_renderer = new D3D11Renderer();
-  if (!m_renderer->init(m_cfg))
-  {
-    delete m_renderer;
-    m_renderer = nullptr;
-    delete m_input;
-    m_input = nullptr;
-    delete m_time;
-    m_time = nullptr;
-    delete m_world;
-    m_world = nullptr;
-    m_testEntities.clear();
-    return false;
+    m_testEntities.push_back(e);
   }
 
   return true;
@@ -153,6 +166,7 @@ void EngineApp::tick()
   m_frameStats.entityCount = m_world ? static_cast<int32_t>(m_world->aliveCount()) : 0;
   // movingCount is computed above only when world exists; default to 0 otherwise.
   if (!m_world) m_frameStats.movingCount = 0;
+  m_frameStats.drawCount = 0;
   m_frameStats.mouseX = m_input->mouseX();
   m_frameStats.mouseY = m_input->mouseY();
   m_frameStats.mouseDeltaX = m_input->mouseDeltaX();
@@ -161,7 +175,10 @@ void EngineApp::tick()
 
   m_renderer->beginFrame();
   m_renderer->clear(0.05f, 0.10f, 0.20f, 1.0f);
-  m_renderer->drawTestTriangle(m_time->totalSeconds(), nx * 0.5f, ny * 0.5f);
+  if (m_world && m_renderSystem)
+  {
+    m_frameStats.drawCount = m_renderSystem->render(*m_world, *m_renderer, m_cfg.width, m_cfg.height);
+  }
   m_renderer->endFrame();
   m_renderer->present();
 }
@@ -193,6 +210,9 @@ void EngineApp::shutdown()
     delete m_renderer;
     m_renderer = nullptr;
   }
+
+  delete m_renderSystem;
+  m_renderSystem = nullptr;
 
   delete m_world;
   m_world = nullptr;

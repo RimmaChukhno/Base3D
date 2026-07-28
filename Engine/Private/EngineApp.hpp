@@ -11,6 +11,7 @@ class InputManager;
 class TimeSystem;
 class World;
 struct EntityId;
+class RenderSystem;
 
 class EngineApp
 {
@@ -39,5 +40,7 @@ private:
   // ECS (Step 4)
   World* m_world = nullptr;
   std::vector<EntityId> m_testEntities;
+
+  RenderSystem* m_renderSystem = nullptr;
 };
 
