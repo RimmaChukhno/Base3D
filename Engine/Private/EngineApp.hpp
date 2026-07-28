@@ -4,10 +4,13 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 class D3D11Renderer;
 class InputManager;
 class TimeSystem;
+class World;
+struct EntityId;
 
 class EngineApp
 {
@@ -32,5 +35,9 @@ private:
   D3D11Renderer* m_renderer = nullptr;
   InputManager* m_input = nullptr;
   TimeSystem* m_time = nullptr;
+
+  // ECS (Step 4)
+  World* m_world = nullptr;
+  std::vector<EntityId> m_testEntities;
 };
 

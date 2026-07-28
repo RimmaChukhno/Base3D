@@ -3,8 +3,13 @@
 #include "Renderer/D3D11Renderer.hpp"
 #include "Input/InputManager.hpp"
 #include "Time/TimeSystem.hpp"
+#include "ECS/World.hpp"
+#include "ECS/EntityId.hpp"
+#include "ECS/Components/Transform.hpp"
+#include "ECS/Components/Velocity.hpp"
 
 #include <Windows.h>
+#include <cmath>
 
 EngineApp::EngineApp() = default;
 
@@ -42,6 +47,36 @@ bool EngineApp::init(const EngineConfig& cfg)
     return false;
   }
 
+  m_world = new World();
+  m_testEntities.clear();
+  m_testEntities.reserve(2000);
+
+  // Validation for Step 4:
+  // - Spawn N entities with Transform
+  // - Update them every frame (touch memory, prove iteration)
+  constexpr int kSpawnCount = 2000;
+  for (int i = 0; i < kSpawnCount; ++i)
+  {
+    const EntityId e = m_world->createEntity();
+    Transform t{};
+    t.px = (static_cast<float>(i % 50) - 25.0f) * 0.05f;
+    t.py = (static_cast<float>(i / 50) - 20.0f) * 0.05f;
+    t.pz = 0.0f;
+    m_world->add<Transform>(e, t);
+
+    // Add Velocity to a subset to validate multi-component queries.
+    if ((i % 3) == 0)
+    {
+      Velocity v{};
+      v.vx = 0.1f + 0.02f * static_cast<float>(i % 7);
+      v.vy = 0.05f;
+      v.vz = 0.0f;
+      m_world->add<Velocity>(e, v);
+    }
+
+    m_testEntities.push_back(e);
+  }
+
   m_renderer = new D3D11Renderer();
   if (!m_renderer->init(m_cfg))
   {
@@ -51,6 +86,9 @@ bool EngineApp::init(const EngineConfig& cfg)
     m_input = nullptr;
     delete m_time;
     m_time = nullptr;
+    delete m_world;
+    m_world = nullptr;
+    m_testEntities.clear();
     return false;
   }
 
@@ -80,10 +118,40 @@ void EngineApp::tick()
     ny = 1.0f - (static_cast<float>(m_input->mouseY()) / static_cast<float>(m_cfg.height)) * 2.0f;
   }
 
+  // ECS validation update: iterate Transform storage (dense) and animate.
+  if (m_world)
+  {
+    const float t = m_time->totalSeconds();
+    const float wobble = 0.1f * std::sinf(t);
+
+    // 1) Query join: Transform + Velocity (subset update).
+    int movingCount = 0;
+    const float dt = m_time->deltaSeconds();
+    m_world->each<Transform, Velocity>([&](EntityId, Transform& tr, Velocity& v)
+    {
+      tr.px += v.vx * dt;
+      tr.py += v.vy * dt;
+      tr.rz += dt * 0.5f;
+      movingCount += 1;
+    });
+
+    // 2) Single-component dense iteration remains useful for "all transforms" operations.
+    auto& transforms = m_world->storage<Transform>();
+    auto& comps = transforms.denseComponents();
+    for (auto& tr : comps)
+    {
+      tr.px += wobble * dt;
+    }
+
+    m_frameStats.movingCount = movingCount;
+  }
+
   // Update stats for external debugging (Game window title).
   m_frameStats.deltaSeconds = m_time->deltaSeconds();
   m_frameStats.totalSeconds = m_time->totalSeconds();
   m_frameStats.fps = m_time->fps();
+  m_frameStats.entityCount = m_world ? static_cast<int32_t>(m_world->aliveCount()) : 0;
+  if (!m_world) m_frameStats.movingCount = 0;
   m_frameStats.mouseX = m_input->mouseX();
   m_frameStats.mouseY = m_input->mouseY();
   m_frameStats.mouseDeltaX = m_input->mouseDeltaX();
@@ -124,6 +192,10 @@ void EngineApp::shutdown()
     delete m_renderer;
     m_renderer = nullptr;
   }
+
+  delete m_world;
+  m_world = nullptr;
+  m_testEntities.clear();
 
   delete m_input;
   m_input = nullptr;

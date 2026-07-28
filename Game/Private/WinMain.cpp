@@ -141,9 +141,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int)
       wchar_t title[256]{};
       swprintf_s(
         title,
-        L"Tron - Step 3 (Time+Input) | FPS: %.1f | dt: %.3f ms | Mouse: %d,%d (d %d,%d) | Wheel: %d",
+        L"Tron - Step 4 (ECS) | FPS: %.1f | dt: %.3f ms | Entities: %d | Mouse: %d,%d (d %d,%d) | Wheel: %d",
         stats.fps,
         stats.deltaSeconds * 1000.0f,
+        stats.entityCount,
         stats.mouseX,
         stats.mouseY,
         stats.mouseDeltaX,
