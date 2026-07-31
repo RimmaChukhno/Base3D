@@ -47,11 +47,20 @@ public:
   void drawDebugLines(const void* vertices, uint32_t vertexStride, uint32_t vertexCount,
                       const float* mvpRowMajor4x4);
 
+  // Particle draw (Step 9): draws textured quads (triangle list).
+  void drawParticles(const void* vertices, uint32_t vertexStride, uint32_t vertexCount,
+                     const float* mvpRowMajor4x4);
+
+  // Post-processing (Step 9)
+  void setPostProcess(float brightness, float contrast, float saturation);
+  void setPostEnabled(bool enabled) { m_postEnabled = enabled; }
+
 private:
   bool createDeviceAndSwapChain(const EngineConfig& cfg);
   bool createBackBufferTargets(int32_t width, int32_t height);
   bool createDefaultResources(const EngineConfig& cfg);
   void destroyDefaultResources();
+  bool createSceneTargets(int32_t width, int32_t height);
 
 private:
   Microsoft::WRL::ComPtr<ID3D11Device> m_device;
@@ -72,6 +81,28 @@ private:
   Microsoft::WRL::ComPtr<ID3D11Buffer> m_cbPerObject;
   Microsoft::WRL::ComPtr<ID3D11Buffer> m_debugLineVB;
   uint32_t m_debugLineVBBytes = 0;
+
+  // Particles
+  MaterialHandle m_particleMaterial = kInvalidMaterial;
+  Microsoft::WRL::ComPtr<ID3D11Buffer> m_particleVB;
+  uint32_t m_particleVBBytes = 0;
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_particleTexSRV;
+  Microsoft::WRL::ComPtr<ID3D11SamplerState> m_linearSampler;
+  Microsoft::WRL::ComPtr<ID3D11BlendState> m_alphaBlend;
+
+  // PostFX
+  bool m_postEnabled = true;
+  float m_postBrightness = 0.0f;
+  float m_postContrast = 1.0f;
+  float m_postSaturation = 1.0f;
+
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> m_sceneTex;
+  Microsoft::WRL::ComPtr<ID3D11RenderTargetView> m_sceneRTV;
+  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_sceneSRV;
+  Microsoft::WRL::ComPtr<ID3D11VertexShader> m_postVS;
+  Microsoft::WRL::ComPtr<ID3D11PixelShader> m_postPS;
+  Microsoft::WRL::ComPtr<ID3D11Buffer> m_cbPost;
+  Microsoft::WRL::ComPtr<ID3D11DepthStencilState> m_depthOff;
 
   int32_t m_width = 0;
   int32_t m_height = 0;

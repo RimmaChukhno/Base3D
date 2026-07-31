@@ -22,6 +22,7 @@ struct EngineFrameStats
   int32_t entityCount;
   int32_t movingCount;
   int32_t drawCount;
+  int32_t particleVertexCount;
   int32_t collisionPairs;
   int32_t collisionOverlaps;
   int32_t stateId;

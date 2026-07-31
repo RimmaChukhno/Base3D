@@ -141,13 +141,14 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int)
       wchar_t title[256]{};
       swprintf_s(
         title,
-        L"Tron - Step 8 (StateMachine) | FPS: %.1f | dt: %.3f ms | State: %d | Entities: %d | Moving: %d | Draws: %d | Pairs: %d | Overlaps: %d | Mouse: %d,%d (d %d,%d) | Wheel: %d",
+        L"Tron - Step 9 (Particles+Post) | FPS: %.1f | dt: %.3f ms | State: %d | Entities: %d | Moving: %d | Draws: %d | PartVtx: %d | Pairs: %d | Overlaps: %d | Mouse: %d,%d (d %d,%d) | Wheel: %d",
         stats.fps,
         stats.deltaSeconds * 1000.0f,
         stats.stateId,
         stats.entityCount,
         stats.movingCount,
         stats.drawCount,
+        stats.particleVertexCount,
         stats.collisionPairs,
         stats.collisionOverlaps,
         stats.mouseX,

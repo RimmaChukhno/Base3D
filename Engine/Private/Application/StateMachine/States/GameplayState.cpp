@@ -11,6 +11,7 @@ void GameplayState::update(StateContext& ctx)
   ctx.plan.runScripts = true;
   ctx.plan.runMotion = true;
   ctx.plan.runCollision = true;
+  ctx.plan.runParticles = true;
   ctx.plan.runRender = true;
 
   // P toggles pause.

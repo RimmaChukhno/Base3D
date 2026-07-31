@@ -11,6 +11,7 @@ struct FramePlan
   bool runScripts = false;
   bool runMotion = false;
   bool runCollision = false;
+  bool runParticles = false;
   bool runRender = true;
 };
 

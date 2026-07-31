@@ -19,6 +19,9 @@
 #include "Application/StateMachine/StateMachine.hpp"
 #include "Application/StateMachine/GameStateId.hpp"
 
+#include "Particles/ParticleSystem.hpp"
+#include "ECS/Components/ParticleEmitter.hpp"
+
 #include <Windows.h>
 #include <cmath>
 
@@ -74,6 +77,7 @@ bool EngineApp::init(const EngineConfig& cfg)
   m_collisionSystem = new CollisionSystem();
   m_scriptSystem = new ScriptSystem();
   m_stateMachine = new StateMachine();
+  m_particleSystem = new ParticleSystem();
 
   m_world = new World();
   m_testEntities.clear();
@@ -127,6 +131,28 @@ bool EngineApp::init(const EngineConfig& cfg)
     m_testEntities.push_back(e);
   }
 
+  // Step 9: create a particle emitter entity (visible in Gameplay state).
+  {
+    const EntityId pe = m_world->createEntity();
+    Transform t{};
+    t.px = 0.0f;
+    t.py = 0.0f;
+    t.pz = 0.0f;
+    m_world->add<Transform>(pe, t);
+
+    ParticleEmitter em{};
+    em.emitRate = 350.0f;
+    em.maxParticles = 900;
+    em.spawnRadius = 0.02f;
+    em.lifeMin = 0.5f;
+    em.lifeMax = 1.1f;
+    em.speedMin = 0.10f;
+    em.speedMax = 0.35f;
+    em.sizeMin = 0.008f;
+    em.sizeMax = 0.020f;
+    m_world->add<ParticleEmitter>(pe, std::move(em));
+  }
+
   // State machine (Step 8) comes last so it can rely on subsystems.
   m_stateMachine->init(*this, *m_input, *m_time);
 
@@ -168,8 +194,35 @@ void EngineApp::tick()
     plan.runScripts = true;
     plan.runMotion = true;
     plan.runCollision = true;
+    plan.runParticles = true;
     plan.runRender = true;
   }
+
+  // Post-process tweak controls (works in any state).
+  // Brightness: 1/2, Contrast: 3/4, Saturation: 5/6, Toggle post: O
+  static float s_brightness = 0.0f;
+  static float s_contrast = 1.0f;
+  static float s_saturation = 1.0f;
+  static bool s_postEnabled = true;
+
+  const float step = m_input->isKeyDown(VK_SHIFT) ? 0.10f : 0.02f;
+  if (m_input->wasKeyPressed('O')) s_postEnabled = !s_postEnabled;
+  if (m_input->isKeyDown('1')) s_brightness -= step;
+  if (m_input->isKeyDown('2')) s_brightness += step;
+  if (m_input->isKeyDown('3')) s_contrast -= step;
+  if (m_input->isKeyDown('4')) s_contrast += step;
+  if (m_input->isKeyDown('5')) s_saturation -= step;
+  if (m_input->isKeyDown('6')) s_saturation += step;
+
+  if (s_contrast < 0.0f) s_contrast = 0.0f;
+  if (s_saturation < 0.0f) s_saturation = 0.0f;
+  if (s_contrast > 2.0f) s_contrast = 2.0f;
+  if (s_saturation > 2.0f) s_saturation = 2.0f;
+  if (s_brightness < -1.0f) s_brightness = -1.0f;
+  if (s_brightness > 1.0f) s_brightness = 1.0f;
+
+  m_renderer->setPostProcess(s_brightness, s_contrast, s_saturation);
+  m_renderer->setPostEnabled(s_postEnabled);
 
   // Script update stage (Unity-like).
   if (plan.runScripts && m_world && m_scriptSystem)
@@ -211,6 +264,7 @@ void EngineApp::tick()
   // movingCount is computed above only when world exists; default to 0 otherwise.
   if (!m_world) m_frameStats.movingCount = 0;
   m_frameStats.drawCount = 0;
+  m_frameStats.particleVertexCount = 0;
   m_frameStats.collisionPairs = 0;
   m_frameStats.collisionOverlaps = 0;
   m_frameStats.stateId = m_stateMachine ? static_cast<int32_t>(m_stateMachine->current()) : -1;
@@ -237,6 +291,30 @@ void EngineApp::tick()
       }
     }
   }
+
+  // Particles stage (update + render quads).
+  if (plan.runParticles && m_world && m_particleSystem)
+  {
+    const uint32_t vtx = m_particleSystem->update(*m_world, *m_time);
+    m_frameStats.particleVertexCount = static_cast<int32_t>(vtx);
+
+    // Aspect-only MVP (consistent with our current 2D-ish rendering).
+    const float aspect = (m_cfg.height > 0) ? (static_cast<float>(m_cfg.width) / static_cast<float>(m_cfg.height)) : 1.0f;
+    const float sx = 1.0f / (aspect > 0.0001f ? aspect : 1.0f);
+    const float mvp[16] = {
+      sx, 0,  0,  0,
+      0,  1,  0,  0,
+      0,  0,  1,  0,
+      0,  0,  0,  1
+    };
+
+    const auto& verts = m_particleSystem->vertices();
+    if (!verts.empty())
+    {
+      m_renderer->drawParticles(verts.data(), sizeof(ParticleVertex), static_cast<uint32_t>(verts.size()), mvp);
+    }
+  }
+
   if (plan.runRender && m_world && m_renderSystem)
   {
     m_frameStats.drawCount = m_renderSystem->render(*m_world, *m_renderer, m_cfg.width, m_cfg.height);
@@ -290,6 +368,9 @@ void EngineApp::shutdown()
 
   delete m_stateMachine;
   m_stateMachine = nullptr;
+
+  delete m_particleSystem;
+  m_particleSystem = nullptr;
 
   delete m_world;
   m_world = nullptr;

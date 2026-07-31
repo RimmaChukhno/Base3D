@@ -16,6 +16,7 @@ class RenderSystem;
 class CollisionSystem;
 class ScriptSystem;
 class StateMachine;
+class ParticleSystem;
 
 class EngineApp
 {
@@ -50,6 +51,9 @@ private:
   CollisionSystem* m_collisionSystem = nullptr;
   ScriptSystem* m_scriptSystem = nullptr;
   StateMachine* m_stateMachine = nullptr;
+
+  // Particles (Step 9)
+  ParticleSystem* m_particleSystem = nullptr;
 
   // Re-used buffer to avoid per-frame allocations.
   std::vector<std::pair<EntityId, EntityId>> m_overlapPairs;
