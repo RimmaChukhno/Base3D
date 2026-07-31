@@ -12,6 +12,10 @@
 #include "ECS/Components/Collider.hpp"
 #include "ECS/Systems/CollisionSystem.hpp"
 
+#include "ECS/Components/ScriptComponent.hpp"
+#include "Scripting/ScriptSystem.hpp"
+#include "Scripting/Scripts/SpinScript.hpp"
+
 #include <Windows.h>
 #include <cmath>
 
@@ -65,6 +69,7 @@ bool EngineApp::init(const EngineConfig& cfg)
 
   m_renderSystem = new RenderSystem();
   m_collisionSystem = new CollisionSystem();
+  m_scriptSystem = new ScriptSystem();
 
   m_world = new World();
   m_testEntities.clear();
@@ -107,6 +112,12 @@ bool EngineApp::init(const EngineConfig& cfg)
       // Step 6: give renderable entities an AABB collider.
       // Keep extents small so collisions happen with motion.
       m_world->add<Collider>(e, Collider::makeAabb(0.03f, 0.03f, 0.01f));
+
+      // Step 7: attach a script to a subset.
+      if ((i % 100) == 0)
+      {
+        m_world->add<ScriptComponent>(e, ScriptComponent{ std::make_unique<SpinScript>() });
+      }
     }
 
     m_testEntities.push_back(e);
@@ -138,13 +149,19 @@ void EngineApp::tick()
     ny = 1.0f - (static_cast<float>(m_input->mouseY()) / static_cast<float>(m_cfg.height)) * 2.0f;
   }
 
-  // ECS validation update: iterate Transform storage (dense) and animate.
+  // Script update stage (Unity-like).
+  // Scripts run after Time+Input, before motion + collisions.
+  if (m_world && m_scriptSystem)
+  {
+    m_scriptSystem->update(*m_world, *m_input, *m_time);
+  }
+
+  // Motion stage (Velocity integration) + simple global wobble (kept as a demo).
   if (m_world)
   {
     const float t = m_time->totalSeconds();
     const float wobble = 0.1f * std::sinf(t);
 
-    // 1) Query join: Transform + Velocity (subset update).
     int movingCount = 0;
     const float dt = m_time->deltaSeconds();
     m_world->each<Transform, Velocity>([&](EntityId, Transform& tr, Velocity& v)
@@ -155,7 +172,6 @@ void EngineApp::tick()
       movingCount += 1;
     });
 
-    // 2) Single-component dense iteration remains useful for "all transforms" operations.
     auto& transforms = m_world->storage<Transform>();
     auto& comps = transforms.denseComponents();
     for (auto& tr : comps)
@@ -186,9 +202,18 @@ void EngineApp::tick()
   m_renderer->clear(0.05f, 0.10f, 0.20f, 1.0f);
   if (m_world && m_collisionSystem)
   {
-    const auto cs = m_collisionSystem->update(*m_world, *m_renderer, m_cfg.width, m_cfg.height);
+    const auto cs = m_collisionSystem->update(*m_world, *m_renderer, m_cfg.width, m_cfg.height, &m_overlapPairs);
     m_frameStats.collisionPairs = cs.pairChecks;
     m_frameStats.collisionOverlaps = cs.overlaps;
+
+    // Script callbacks for collisions.
+    if (m_scriptSystem)
+    {
+      for (const auto& p : m_overlapPairs)
+      {
+        m_scriptSystem->onCollision(*m_world, p.first, p.second);
+      }
+    }
   }
   if (m_world && m_renderSystem)
   {
@@ -231,6 +256,9 @@ void EngineApp::shutdown()
 
   delete m_collisionSystem;
   m_collisionSystem = nullptr;
+
+  delete m_scriptSystem;
+  m_scriptSystem = nullptr;
 
   delete m_world;
   m_world = nullptr;

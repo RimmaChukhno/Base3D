@@ -3,6 +3,8 @@
 #include "ECS/EntityId.hpp"
 
 #include <cstdint>
+#include <algorithm>
+#include <utility>
 #include <vector>
 
 // Sparse-set storage (Unity/EnTT style idea):
@@ -53,13 +55,15 @@ public:
     return &m_denseComponents[denseIndex];
   }
 
-  T& add(EntityId e, const T& value = T{})
+  // Add/replace component.
+  // Takes by-value to support move-only types (e.g., ScriptComponent with unique_ptr).
+  T& add(EntityId e, T value = T{})
   {
     if (has(e))
     {
       // Replace-in-place semantics (simple and deterministic).
       T* existing = tryGet(e);
-      *existing = value;
+      *existing = std::move(value);
       return *existing;
     }
 
@@ -67,9 +71,15 @@ public:
 
     const uint32_t denseIndex = static_cast<uint32_t>(m_denseEntities.size());
     m_denseEntities.push_back(e);
-    m_denseComponents.push_back(value);
+    m_denseComponents.push_back(std::move(value));
     m_sparse[e.index] = denseIndex + 1;
     return m_denseComponents.back();
+  }
+
+  template <typename... Args>
+  T& emplace(EntityId e, Args&&... args)
+  {
+    return add(e, T{ std::forward<Args>(args)... });
   }
 
   void remove(EntityId e)
@@ -83,7 +93,7 @@ public:
     {
       // Swap-remove.
       m_denseEntities[denseIndex] = m_denseEntities[last];
-      m_denseComponents[denseIndex] = m_denseComponents[last];
+      m_denseComponents[denseIndex] = std::move(m_denseComponents[last]);
       m_sparse[m_denseEntities[denseIndex].index] = denseIndex + 1;
     }
 

@@ -90,7 +90,7 @@ public:
   }
 
   template <typename T>
-  T& add(EntityId e, const T& value = T{})
+  T& add(EntityId e, T value = T{})
   {
     // Safety: in a "pro" engine you'd likely assert here.
     // We keep it non-throwing and tolerant for now.
@@ -103,7 +103,20 @@ public:
 
     auto& st = storage<T>();
     st.ensureSparseCapacity(m_entities.capacity());
-    return st.add(e, value);
+    return st.add(e, std::move(value));
+  }
+
+  template <typename T, typename... Args>
+  T& emplace(EntityId e, Args&&... args)
+  {
+    if (!m_entities.isAlive(e))
+    {
+      e = createEntity();
+    }
+
+    auto& st = storage<T>();
+    st.ensureSparseCapacity(m_entities.capacity());
+    return st.emplace(e, std::forward<Args>(args)...);
   }
 
   template <typename T>

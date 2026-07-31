@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 class D3D11Renderer;
@@ -13,6 +14,7 @@ class World;
 struct EntityId;
 class RenderSystem;
 class CollisionSystem;
+class ScriptSystem;
 
 class EngineApp
 {
@@ -44,5 +46,9 @@ private:
 
   RenderSystem* m_renderSystem = nullptr;
   CollisionSystem* m_collisionSystem = nullptr;
+  ScriptSystem* m_scriptSystem = nullptr;
+
+  // Re-used buffer to avoid per-frame allocations.
+  std::vector<std::pair<EntityId, EntityId>> m_overlapPairs;
 };
 

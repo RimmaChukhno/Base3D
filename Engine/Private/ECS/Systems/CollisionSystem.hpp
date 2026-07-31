@@ -1,9 +1,12 @@
 #pragma once
 
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 class World;
 class D3D11Renderer;
+struct EntityId;
 
 struct CollisionStats
 {
@@ -17,6 +20,8 @@ class CollisionSystem
 {
 public:
   // Step 6: naive collision detection + debug draw.
-  CollisionStats update(World& world, D3D11Renderer& renderer, int32_t viewportWidth, int32_t viewportHeight);
+  // If outOverlaps != nullptr, the system fills it with overlapping pairs for scripting callbacks.
+  CollisionStats update(World& world, D3D11Renderer& renderer, int32_t viewportWidth, int32_t viewportHeight,
+                        std::vector<std::pair<EntityId, EntityId>>* outOverlaps);
 };
 

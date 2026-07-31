@@ -38,9 +38,11 @@ static Collision::Aabb makeWorldAabb(const Transform& tr, const Collider& c)
   return a;
 }
 
-CollisionStats CollisionSystem::update(World& world, D3D11Renderer& renderer, int32_t viewportWidth, int32_t viewportHeight)
+CollisionStats CollisionSystem::update(World& world, D3D11Renderer& renderer, int32_t viewportWidth, int32_t viewportHeight,
+                                       std::vector<std::pair<EntityId, EntityId>>* outOverlaps)
 {
   CollisionStats stats{};
+  if (outOverlaps) outOverlaps->clear();
 
   // Gather colliders (Transform + Collider).
   struct Item
@@ -74,6 +76,10 @@ CollisionStats CollisionSystem::update(World& world, D3D11Renderer& renderer, in
         items[i].hit = true;
         items[j].hit = true;
         stats.overlaps += 1;
+        if (outOverlaps)
+        {
+          outOverlaps->push_back({ items[i].e, items[j].e });
+        }
       }
     }
   }
