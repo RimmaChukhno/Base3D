@@ -16,6 +16,9 @@
 #include "Scripting/ScriptSystem.hpp"
 #include "Scripting/Scripts/SpinScript.hpp"
 
+#include "Application/StateMachine/StateMachine.hpp"
+#include "Application/StateMachine/GameStateId.hpp"
+
 #include <Windows.h>
 #include <cmath>
 
@@ -70,6 +73,7 @@ bool EngineApp::init(const EngineConfig& cfg)
   m_renderSystem = new RenderSystem();
   m_collisionSystem = new CollisionSystem();
   m_scriptSystem = new ScriptSystem();
+  m_stateMachine = new StateMachine();
 
   m_world = new World();
   m_testEntities.clear();
@@ -123,6 +127,9 @@ bool EngineApp::init(const EngineConfig& cfg)
     m_testEntities.push_back(e);
   }
 
+  // State machine (Step 8) comes last so it can rely on subsystems.
+  m_stateMachine->init(*this, *m_input, *m_time);
+
   return true;
 }
 
@@ -149,15 +156,29 @@ void EngineApp::tick()
     ny = 1.0f - (static_cast<float>(m_input->mouseY()) / static_cast<float>(m_cfg.height)) * 2.0f;
   }
 
+  // State machine decides which pipeline stages run this frame.
+  FramePlan plan{};
+  if (m_stateMachine)
+  {
+    plan = m_stateMachine->tick();
+  }
+  else
+  {
+    // Fallback: old behavior = gameplay pipeline always on.
+    plan.runScripts = true;
+    plan.runMotion = true;
+    plan.runCollision = true;
+    plan.runRender = true;
+  }
+
   // Script update stage (Unity-like).
-  // Scripts run after Time+Input, before motion + collisions.
-  if (m_world && m_scriptSystem)
+  if (plan.runScripts && m_world && m_scriptSystem)
   {
     m_scriptSystem->update(*m_world, *m_input, *m_time);
   }
 
   // Motion stage (Velocity integration) + simple global wobble (kept as a demo).
-  if (m_world)
+  if (plan.runMotion && m_world)
   {
     const float t = m_time->totalSeconds();
     const float wobble = 0.1f * std::sinf(t);
@@ -192,6 +213,7 @@ void EngineApp::tick()
   m_frameStats.drawCount = 0;
   m_frameStats.collisionPairs = 0;
   m_frameStats.collisionOverlaps = 0;
+  m_frameStats.stateId = m_stateMachine ? static_cast<int32_t>(m_stateMachine->current()) : -1;
   m_frameStats.mouseX = m_input->mouseX();
   m_frameStats.mouseY = m_input->mouseY();
   m_frameStats.mouseDeltaX = m_input->mouseDeltaX();
@@ -200,7 +222,7 @@ void EngineApp::tick()
 
   m_renderer->beginFrame();
   m_renderer->clear(0.05f, 0.10f, 0.20f, 1.0f);
-  if (m_world && m_collisionSystem)
+  if (plan.runCollision && m_world && m_collisionSystem)
   {
     const auto cs = m_collisionSystem->update(*m_world, *m_renderer, m_cfg.width, m_cfg.height, &m_overlapPairs);
     m_frameStats.collisionPairs = cs.pairChecks;
@@ -215,7 +237,7 @@ void EngineApp::tick()
       }
     }
   }
-  if (m_world && m_renderSystem)
+  if (plan.runRender && m_world && m_renderSystem)
   {
     m_frameStats.drawCount = m_renderSystem->render(*m_world, *m_renderer, m_cfg.width, m_cfg.height);
   }
@@ -235,6 +257,12 @@ void EngineApp::onWin32Message(uint32_t msg, uintptr_t wParam, intptr_t lParam)
 {
   if (!m_input) return;
   m_input->onWin32Message(msg, wParam, lParam);
+}
+
+void EngineApp::requestQuit()
+{
+  if (!m_cfg.windowHandle) return;
+  PostMessageW(reinterpret_cast<HWND>(m_cfg.windowHandle), WM_CLOSE, 0, 0);
 }
 
 void EngineApp::getFrameStats(EngineFrameStats& outStats) const
@@ -259,6 +287,9 @@ void EngineApp::shutdown()
 
   delete m_scriptSystem;
   m_scriptSystem = nullptr;
+
+  delete m_stateMachine;
+  m_stateMachine = nullptr;
 
   delete m_world;
   m_world = nullptr;

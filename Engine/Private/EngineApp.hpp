@@ -15,6 +15,7 @@ struct EntityId;
 class RenderSystem;
 class CollisionSystem;
 class ScriptSystem;
+class StateMachine;
 
 class EngineApp
 {
@@ -29,6 +30,7 @@ public:
   void tick();
   void onResize(int32_t width, int32_t height);
   void onWin32Message(uint32_t msg, uintptr_t wParam, intptr_t lParam);
+  void requestQuit();
   void getFrameStats(EngineFrameStats& outStats) const;
   void shutdown();
 
@@ -47,6 +49,7 @@ private:
   RenderSystem* m_renderSystem = nullptr;
   CollisionSystem* m_collisionSystem = nullptr;
   ScriptSystem* m_scriptSystem = nullptr;
+  StateMachine* m_stateMachine = nullptr;
 
   // Re-used buffer to avoid per-frame allocations.
   std::vector<std::pair<EntityId, EntityId>> m_overlapPairs;
