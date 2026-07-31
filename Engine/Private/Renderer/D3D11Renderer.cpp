@@ -404,13 +404,12 @@ void D3D11Renderer::drawMesh(MeshHandle meshH, MaterialHandle matH, const float*
 }
 
 void D3D11Renderer::drawDebugLines(const void* vertices, uint32_t vertexStride, uint32_t vertexCount,
-                                  const float* mvpRowMajor4x4)
+                                  const float* mvpRowMajor4x4, MaterialHandle material)
 {
   if (!m_context || !m_device || !m_cbPerObject) return;
   if (!vertices || vertexStride == 0 || vertexCount == 0) return;
-  if (m_defaultMaterial == kInvalidMaterial) return;
 
-  const Material* mat = tryGetMaterial(m_defaultMaterial);
+  const Material* mat = tryGetMaterial(material);
   if (!mat || !mat->program.vs || !mat->program.ps || !mat->program.inputLayout) return;
 
   // Ensure dynamic VB capacity.
@@ -477,13 +476,14 @@ void D3D11Renderer::drawDebugLines(const void* vertices, uint32_t vertexStride, 
 }
 
 void D3D11Renderer::drawParticles(const void* vertices, uint32_t vertexStride, uint32_t vertexCount,
-                                  const float* mvpRowMajor4x4)
+                                  const float* mvpRowMajor4x4, MaterialHandle material,
+                                  ID3D11ShaderResourceView* textureSrv)
 {
   if (!m_context || !m_device || !m_cbPerObject) return;
   if (!vertices || vertexStride == 0 || vertexCount == 0) return;
-  if (m_particleMaterial == kInvalidMaterial || !m_particleTexSRV || !m_linearSampler) return;
+  if (material == kInvalidMaterial || !textureSrv || !m_linearSampler) return;
 
-  const Material* mat = tryGetMaterial(m_particleMaterial);
+  const Material* mat = tryGetMaterial(material);
   if (!mat || !mat->program.vs || !mat->program.ps || !mat->program.inputLayout) return;
 
   // Ensure dynamic VB capacity.
@@ -554,7 +554,7 @@ void D3D11Renderer::drawParticles(const void* vertices, uint32_t vertexStride, u
   m_context->VSSetShader(mat->program.vs.Get(), nullptr, 0);
   m_context->PSSetShader(mat->program.ps.Get(), nullptr, 0);
 
-  ID3D11ShaderResourceView* srvs[] = { m_particleTexSRV.Get() };
+  ID3D11ShaderResourceView* srvs[] = { textureSrv };
   m_context->PSSetShaderResources(0, 1, srvs);
   ID3D11SamplerState* samps[] = { m_linearSampler.Get() };
   m_context->PSSetSamplers(0, 1, samps);
@@ -663,46 +663,7 @@ bool D3D11Renderer::createDefaultResources(const EngineConfig& cfg)
 {
   if (!m_device || !m_context) return false;
 
-  ShaderManager shaders(m_device.Get());
-
-  const D3D11_INPUT_ELEMENT_DESC layout[] = {
-    { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
-    { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-  };
-
-  const std::wstring shaderPath = std::wstring(cfg.assetsRoot) + L"\\Shaders\\MeshColor.hlsl";
-  ShaderProgram program = shaders.createProgramFromFile(
-    shaderPath,
-    "VSMain",
-    "PSMain",
-    layout,
-    static_cast<uint32_t>(std::size(layout))
-  );
-  if (!program.vs || !program.ps || !program.inputLayout) return false;
-
-  m_defaultMaterial = createMaterial(program);
-
-  struct Vertex
-  {
-    float px, py, pz;
-    float r, g, b, a;
-  };
-
-  const Vertex triVerts[3] = {
-    {  0.0f,  0.5f, 0.0f, 1.f, 0.f, 0.f, 1.f },
-    {  0.5f, -0.5f, 0.0f, 0.f, 1.f, 0.f, 1.f },
-    { -0.5f, -0.5f, 0.0f, 0.f, 0.f, 1.f, 1.f },
-  };
-  m_defaultTriangle = createMesh(triVerts, sizeof(Vertex), 3, nullptr, DXGI_FORMAT_UNKNOWN, 0);
-
-  const Vertex quadVerts[4] = {
-    { -0.5f,  0.5f, 0.0f, 1.f, 1.f, 0.f, 1.f },
-    {  0.5f,  0.5f, 0.0f, 0.f, 1.f, 1.f, 1.f },
-    {  0.5f, -0.5f, 0.0f, 1.f, 0.f, 1.f, 1.f },
-    { -0.5f, -0.5f, 0.0f, 1.f, 0.5f, 0.2f, 1.f },
-  };
-  const uint16_t quadIdx[6] = { 0, 1, 2, 0, 2, 3 };
-  m_defaultQuad = createMesh(quadVerts, sizeof(Vertex), 4, quadIdx, DXGI_FORMAT_R16_UINT, 6);
+  (void)cfg;
 
   struct alignas(16) PerObject
   {
@@ -718,48 +679,8 @@ bool D3D11Renderer::createDefaultResources(const EngineConfig& cfg)
   HRESULT hr = m_device->CreateBuffer(&cbDesc, nullptr, m_cbPerObject.GetAddressOf());
   if (FAILED(hr)) return false;
 
-  // Particle shaders + material
+  // Alpha blend state (used by particles)
   {
-    const D3D11_INPUT_ELEMENT_DESC playout[] = {
-      { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
-      { "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT,       0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-      { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 20, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-    };
-
-    const std::wstring particlePath = std::wstring(cfg.assetsRoot) + L"\\Shaders\\Particles.hlsl";
-    ShaderProgram pprog = shaders.createProgramFromFile(
-      particlePath,
-      "VSMain",
-      "PSMain",
-      playout,
-      static_cast<uint32_t>(std::size(playout))
-    );
-    if (!pprog.vs || !pprog.ps || !pprog.inputLayout) return false;
-    m_particleMaterial = createMaterial(pprog);
-
-    // 1x1 white texture
-    const uint32_t white = 0xFFFFFFFFu;
-    D3D11_TEXTURE2D_DESC tdesc{};
-    tdesc.Width = 1;
-    tdesc.Height = 1;
-    tdesc.MipLevels = 1;
-    tdesc.ArraySize = 1;
-    tdesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    tdesc.SampleDesc.Count = 1;
-    tdesc.Usage = D3D11_USAGE_IMMUTABLE;
-    tdesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-
-    D3D11_SUBRESOURCE_DATA tdata{};
-    tdata.pSysMem = &white;
-    tdata.SysMemPitch = 4;
-
-    Microsoft::WRL::ComPtr<ID3D11Texture2D> tex;
-    hr = m_device->CreateTexture2D(&tdesc, &tdata, tex.GetAddressOf());
-    if (FAILED(hr)) return false;
-    hr = m_device->CreateShaderResourceView(tex.Get(), nullptr, m_particleTexSRV.GetAddressOf());
-    if (FAILED(hr)) return false;
-
-    // Alpha blend state
     D3D11_BLEND_DESC bdesc{};
     bdesc.RenderTarget[0].BlendEnable = TRUE;
     bdesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
@@ -812,7 +733,7 @@ bool D3D11Renderer::createDefaultResources(const EngineConfig& cfg)
     if (FAILED(hr)) return false;
   }
 
-  return m_defaultTriangle != kInvalidMesh && m_defaultQuad != kInvalidMesh && m_defaultMaterial != kInvalidMaterial;
+  return true;
 }
 
 void D3D11Renderer::destroyDefaultResources()
@@ -822,7 +743,6 @@ void D3D11Renderer::destroyDefaultResources()
   m_debugLineVBBytes = 0;
   m_particleVB.Reset();
   m_particleVBBytes = 0;
-  m_particleTexSRV.Reset();
   m_alphaBlend.Reset();
   m_linearSampler.Reset();
   m_postVS.Reset();

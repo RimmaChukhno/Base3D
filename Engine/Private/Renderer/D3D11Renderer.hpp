@@ -21,6 +21,8 @@ public:
   bool init(const EngineConfig& cfg);
   void shutdown();
 
+  ID3D11Device* device() const { return m_device.Get(); }
+
   void beginFrame();
   void endFrame();
   void clear(float r, float g, float b, float a);
@@ -45,11 +47,12 @@ public:
 
   // Debug draw (Step 6): draws a list of colored line vertices (line list).
   void drawDebugLines(const void* vertices, uint32_t vertexStride, uint32_t vertexCount,
-                      const float* mvpRowMajor4x4);
+                      const float* mvpRowMajor4x4, MaterialHandle material);
 
   // Particle draw (Step 9): draws textured quads (triangle list).
   void drawParticles(const void* vertices, uint32_t vertexStride, uint32_t vertexCount,
-                     const float* mvpRowMajor4x4);
+                     const float* mvpRowMajor4x4, MaterialHandle material,
+                     ID3D11ShaderResourceView* textureSrv);
 
   // Post-processing (Step 9)
   void setPostProcess(float brightness, float contrast, float saturation);
@@ -83,10 +86,8 @@ private:
   uint32_t m_debugLineVBBytes = 0;
 
   // Particles
-  MaterialHandle m_particleMaterial = kInvalidMaterial;
   Microsoft::WRL::ComPtr<ID3D11Buffer> m_particleVB;
   uint32_t m_particleVBBytes = 0;
-  Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_particleTexSRV;
   Microsoft::WRL::ComPtr<ID3D11SamplerState> m_linearSampler;
   Microsoft::WRL::ComPtr<ID3D11BlendState> m_alphaBlend;
 

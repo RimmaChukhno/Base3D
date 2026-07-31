@@ -22,6 +22,8 @@
 #include "Particles/ParticleSystem.hpp"
 #include "ECS/Components/ParticleEmitter.hpp"
 
+#include "Resources/ResourceManager.hpp"
+
 #include <Windows.h>
 #include <cmath>
 
@@ -78,6 +80,14 @@ bool EngineApp::init(const EngineConfig& cfg)
   m_scriptSystem = new ScriptSystem();
   m_stateMachine = new StateMachine();
   m_particleSystem = new ParticleSystem();
+  m_resources = new ResourceManager(m_renderer->device(), *m_renderer, m_assetsRoot);
+
+  // Built-in resources (dedup, Step 10).
+  m_triMesh = m_resources->getOrCreateTriangleMesh();
+  m_quadMesh = m_resources->getOrCreateQuadMesh();
+  m_meshColorMat = m_resources->getOrCreateMeshColorMaterial();
+  m_particleMat = m_resources->getOrCreateParticleMaterial();
+  m_particleTex = m_resources->getOrCreateWhiteTexture1x1();
 
   m_world = new World();
   m_testEntities.clear();
@@ -109,8 +119,8 @@ bool EngineApp::init(const EngineConfig& cfg)
     if ((i % 10) == 0)
     {
       MeshRenderer mr{};
-      mr.material = m_renderer->defaultColorMaterial();
-      mr.mesh = ((i % 20) == 0) ? m_renderer->defaultQuadMesh() : m_renderer->defaultTriangleMesh();
+      mr.material = m_meshColorMat;
+      mr.mesh = ((i % 20) == 0) ? m_quadMesh : m_triMesh;
       mr.tintR = (i % 2) ? 1.0f : 0.4f;
       mr.tintG = (i % 3) ? 0.9f : 0.4f;
       mr.tintB = (i % 5) ? 0.8f : 0.4f;
@@ -268,6 +278,10 @@ void EngineApp::tick()
   m_frameStats.collisionPairs = 0;
   m_frameStats.collisionOverlaps = 0;
   m_frameStats.stateId = m_stateMachine ? static_cast<int32_t>(m_stateMachine->current()) : -1;
+  m_frameStats.resMeshes = m_resources ? static_cast<int32_t>(m_resources->meshCount()) : 0;
+  m_frameStats.resMaterials = m_resources ? static_cast<int32_t>(m_resources->materialCount()) : 0;
+  m_frameStats.resShaders = m_resources ? static_cast<int32_t>(m_resources->shaderProgramCount()) : 0;
+  m_frameStats.resTextures = m_resources ? static_cast<int32_t>(m_resources->textureCount()) : 0;
   m_frameStats.mouseX = m_input->mouseX();
   m_frameStats.mouseY = m_input->mouseY();
   m_frameStats.mouseDeltaX = m_input->mouseDeltaX();
@@ -278,7 +292,7 @@ void EngineApp::tick()
   m_renderer->clear(0.05f, 0.10f, 0.20f, 1.0f);
   if (plan.runCollision && m_world && m_collisionSystem)
   {
-    const auto cs = m_collisionSystem->update(*m_world, *m_renderer, m_cfg.width, m_cfg.height, &m_overlapPairs);
+    const auto cs = m_collisionSystem->update(*m_world, *m_renderer, m_cfg.width, m_cfg.height, &m_overlapPairs, m_meshColorMat);
     m_frameStats.collisionPairs = cs.pairChecks;
     m_frameStats.collisionOverlaps = cs.overlaps;
 
@@ -311,7 +325,8 @@ void EngineApp::tick()
     const auto& verts = m_particleSystem->vertices();
     if (!verts.empty())
     {
-      m_renderer->drawParticles(verts.data(), sizeof(ParticleVertex), static_cast<uint32_t>(verts.size()), mvp);
+      ID3D11ShaderResourceView* particleSrv = (m_resources) ? m_resources->srv(m_particleTex) : nullptr;
+      m_renderer->drawParticles(verts.data(), sizeof(ParticleVertex), static_cast<uint32_t>(verts.size()), mvp, m_particleMat, particleSrv);
     }
   }
 
@@ -371,6 +386,9 @@ void EngineApp::shutdown()
 
   delete m_particleSystem;
   m_particleSystem = nullptr;
+
+  delete m_resources;
+  m_resources = nullptr;
 
   delete m_world;
   m_world = nullptr;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "EngineAPI.hpp"
+#include "Renderer/Resources/Handles.hpp"
 
 #include <cstdint>
 #include <string>
@@ -17,6 +18,7 @@ class CollisionSystem;
 class ScriptSystem;
 class StateMachine;
 class ParticleSystem;
+class ResourceManager;
 
 class EngineApp
 {
@@ -54,6 +56,14 @@ private:
 
   // Particles (Step 9)
   ParticleSystem* m_particleSystem = nullptr;
+
+  // Resources (Step 10)
+  ResourceManager* m_resources = nullptr;
+  MeshHandle m_triMesh = kInvalidMesh;
+  MeshHandle m_quadMesh = kInvalidMesh;
+  MaterialHandle m_meshColorMat = kInvalidMaterial;
+  MaterialHandle m_particleMat = kInvalidMaterial;
+  uint32_t m_particleTex = 0xFFFFFFFFu; // TextureHandle (kept uint32_t here to avoid public include)
 
   // Re-used buffer to avoid per-frame allocations.
   std::vector<std::pair<EntityId, EntityId>> m_overlapPairs;

@@ -26,6 +26,10 @@ struct EngineFrameStats
   int32_t collisionPairs;
   int32_t collisionOverlaps;
   int32_t stateId;
+  int32_t resMeshes;
+  int32_t resMaterials;
+  int32_t resShaders;
+  int32_t resTextures;
   int32_t mouseX;
   int32_t mouseY;
   int32_t mouseDeltaX;

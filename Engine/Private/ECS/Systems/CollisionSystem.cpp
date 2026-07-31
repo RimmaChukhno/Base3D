@@ -39,7 +39,8 @@ static Collision::Aabb makeWorldAabb(const Transform& tr, const Collider& c)
 }
 
 CollisionStats CollisionSystem::update(World& world, D3D11Renderer& renderer, int32_t viewportWidth, int32_t viewportHeight,
-                                       std::vector<std::pair<EntityId, EntityId>>* outOverlaps)
+                                       std::vector<std::pair<EntityId, EntityId>>* outOverlaps,
+                                       MaterialHandle debugMaterial)
 {
   CollisionStats stats{};
   if (outOverlaps) outOverlaps->clear();
@@ -117,7 +118,7 @@ CollisionStats CollisionSystem::update(World& world, D3D11Renderer& renderer, in
   const float aspect = (viewportHeight > 0) ? (static_cast<float>(viewportWidth) / static_cast<float>(viewportHeight)) : 1.0f;
   float mvp[16]{};
   buildAspectMvpRowMajor(mvp, aspect);
-  renderer.drawDebugLines(dd.data(), sizeof(DebugVertex), dd.vertexCount(), mvp);
+  renderer.drawDebugLines(dd.data(), sizeof(DebugVertex), dd.vertexCount(), mvp, debugMaterial);
 
   return stats;
 }
