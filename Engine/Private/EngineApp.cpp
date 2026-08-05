@@ -6,7 +6,6 @@
 #include "ECS/World.hpp"
 #include "ECS/EntityId.hpp"
 #include "ECS/Components/Transform.hpp"
-#include "ECS/Components/Velocity.hpp"
 #include "ECS/Components/MeshRenderer.hpp"
 #include "ECS/Systems/RenderSystem.hpp"
 #include "ECS/Components/Collider.hpp"
@@ -14,8 +13,6 @@
 
 #include "ECS/Components/ScriptComponent.hpp"
 #include "Scripting/ScriptSystem.hpp"
-#include "Scripting/Scripts/SpinScript.hpp"
-
 #include "Application/StateMachine/StateMachine.hpp"
 #include "Application/StateMachine/GameStateId.hpp"
 
@@ -23,6 +20,12 @@
 #include "ECS/Components/ParticleEmitter.hpp"
 
 #include "Resources/ResourceManager.hpp"
+
+#include "Game/GameWorld.hpp"
+#include "Game/Components/ScoreComponent.hpp"
+#include "Game/Components/PlayerTag.hpp"
+#include "Game/Components/EnemyTag.hpp"
+#include "Game/Components/WallTag.hpp"
 
 #include <Windows.h>
 #include <cmath>
@@ -89,79 +92,10 @@ bool EngineApp::init(const EngineConfig& cfg)
   m_particleMat = m_resources->getOrCreateParticleMaterial();
   m_particleTex = m_resources->getOrCreateWhiteTexture1x1();
 
-  m_world = new World();
-  m_testEntities.clear();
-  m_testEntities.reserve(2000);
-
-  // Step 5 validation:
-  // - Spawn a lot of entities (ECS perf)
-  // - Render a subset via MeshRenderer (multiple meshes/materials)
-  constexpr int kSpawnCount = 2000;
-  for (int i = 0; i < kSpawnCount; ++i)
-  {
-    const EntityId e = m_world->createEntity();
-    Transform t{};
-    t.px = (static_cast<float>(i % 50) - 25.0f) * 0.05f;
-    t.py = (static_cast<float>(i / 50) - 20.0f) * 0.05f;
-    t.pz = 0.0f;
-    m_world->add<Transform>(e, t);
-
-    if ((i % 3) == 0)
-    {
-      Velocity v{};
-      v.vx = 0.1f + 0.02f * static_cast<float>(i % 7);
-      v.vy = 0.05f;
-      v.vz = 0.0f;
-      m_world->add<Velocity>(e, v);
-    }
-
-    // Only some entities are renderable to keep the demo fast while proving the system.
-    if ((i % 10) == 0)
-    {
-      MeshRenderer mr{};
-      mr.material = m_meshColorMat;
-      mr.mesh = ((i % 20) == 0) ? m_quadMesh : m_triMesh;
-      mr.tintR = (i % 2) ? 1.0f : 0.4f;
-      mr.tintG = (i % 3) ? 0.9f : 0.4f;
-      mr.tintB = (i % 5) ? 0.8f : 0.4f;
-      mr.tintA = 1.0f;
-      m_world->add<MeshRenderer>(e, mr);
-
-      // Step 6: give renderable entities an AABB collider.
-      // Keep extents small so collisions happen with motion.
-      m_world->add<Collider>(e, Collider::makeAabb(0.03f, 0.03f, 0.01f));
-
-      // Step 7: attach a script to a subset.
-      if ((i % 100) == 0)
-      {
-        m_world->add<ScriptComponent>(e, ScriptComponent{ std::make_unique<SpinScript>() });
-      }
-    }
-
-    m_testEntities.push_back(e);
-  }
-
-  // Step 9: create a particle emitter entity (visible in Gameplay state).
-  {
-    const EntityId pe = m_world->createEntity();
-    Transform t{};
-    t.px = 0.0f;
-    t.py = 0.0f;
-    t.pz = 0.0f;
-    m_world->add<Transform>(pe, t);
-
-    ParticleEmitter em{};
-    em.emitRate = 350.0f;
-    em.maxParticles = 900;
-    em.spawnRadius = 0.02f;
-    em.lifeMin = 0.5f;
-    em.lifeMax = 1.1f;
-    em.speedMin = 0.10f;
-    em.speedMax = 0.35f;
-    em.sizeMin = 0.008f;
-    em.sizeMax = 0.020f;
-    m_world->add<ParticleEmitter>(pe, std::move(em));
-  }
+  // World is created by LoadingState via prepareGameplayWorld().
+  m_world = nullptr;
+  m_player = kInvalidEntity;
+  m_scoreEntity = kInvalidEntity;
 
   // State machine (Step 8) comes last so it can rely on subsystems.
   m_stateMachine->init(*this, *m_input, *m_time);
@@ -175,22 +109,6 @@ void EngineApp::tick()
 
   m_time->tick();
   m_input->tick();
-
-  // Example controls for validation:
-  // - ESC closes the window (proves key pressed works).
-  // - Mouse position affects triangle translation (proves mouse + resize path).
-  if (m_input->wasKeyPressed(VK_ESCAPE))
-  {
-    PostMessageW(reinterpret_cast<HWND>(m_cfg.windowHandle), WM_CLOSE, 0, 0);
-  }
-
-  float nx = 0.0f;
-  float ny = 0.0f;
-  if (m_cfg.width > 0 && m_cfg.height > 0)
-  {
-    nx = (static_cast<float>(m_input->mouseX()) / static_cast<float>(m_cfg.width)) * 2.0f - 1.0f;
-    ny = 1.0f - (static_cast<float>(m_input->mouseY()) / static_cast<float>(m_cfg.height)) * 2.0f;
-  }
 
   // State machine decides which pipeline stages run this frame.
   FramePlan plan{};
@@ -237,42 +155,17 @@ void EngineApp::tick()
   // Script update stage (Unity-like).
   if (plan.runScripts && m_world && m_scriptSystem)
   {
-    m_scriptSystem->update(*m_world, *m_input, *m_time);
+    m_scriptSystem->update(*m_world, *this, *m_input, *m_time);
   }
 
-  // Motion stage (Velocity integration) + simple global wobble (kept as a demo).
-  if (plan.runMotion && m_world)
-  {
-    const float t = m_time->totalSeconds();
-    const float wobble = 0.1f * std::sinf(t);
-
-    int movingCount = 0;
-    const float dt = m_time->deltaSeconds();
-    m_world->each<Transform, Velocity>([&](EntityId, Transform& tr, Velocity& v)
-    {
-      tr.px += v.vx * dt;
-      tr.py += v.vy * dt;
-      tr.rz += dt * 0.5f;
-      movingCount += 1;
-    });
-
-    auto& transforms = m_world->storage<Transform>();
-    auto& comps = transforms.denseComponents();
-    for (auto& tr : comps)
-    {
-      tr.px += wobble * dt;
-    }
-
-    m_frameStats.movingCount = movingCount;
-  }
+  // Motion stage is now script-driven for Step 11 (player/enemy scripts).
+  if (!plan.runMotion) m_frameStats.movingCount = 0;
 
   // Update stats for external debugging (Game window title).
   m_frameStats.deltaSeconds = m_time->deltaSeconds();
   m_frameStats.totalSeconds = m_time->totalSeconds();
   m_frameStats.fps = m_time->fps();
   m_frameStats.entityCount = m_world ? static_cast<int32_t>(m_world->aliveCount()) : 0;
-  // movingCount is computed above only when world exists; default to 0 otherwise.
-  if (!m_world) m_frameStats.movingCount = 0;
   m_frameStats.drawCount = 0;
   m_frameStats.particleVertexCount = 0;
   m_frameStats.collisionPairs = 0;
@@ -282,6 +175,16 @@ void EngineApp::tick()
   m_frameStats.resMaterials = m_resources ? static_cast<int32_t>(m_resources->materialCount()) : 0;
   m_frameStats.resShaders = m_resources ? static_cast<int32_t>(m_resources->shaderProgramCount()) : 0;
   m_frameStats.resTextures = m_resources ? static_cast<int32_t>(m_resources->textureCount()) : 0;
+  m_frameStats.gameScore = 0;
+  m_frameStats.gameTimeAlive = 0.0f;
+  if (m_world && m_scoreEntity != kInvalidEntity)
+  {
+    if (auto* s = m_world->tryGet<ScoreComponent>(m_scoreEntity))
+    {
+      m_frameStats.gameScore = s->score;
+      m_frameStats.gameTimeAlive = s->timeAlive;
+    }
+  }
   m_frameStats.mouseX = m_input->mouseX();
   m_frameStats.mouseY = m_input->mouseY();
   m_frameStats.mouseDeltaX = m_input->mouseDeltaX();
@@ -358,6 +261,77 @@ void EngineApp::requestQuit()
   PostMessageW(reinterpret_cast<HWND>(m_cfg.windowHandle), WM_CLOSE, 0, 0);
 }
 
+void EngineApp::requestGameOver()
+{
+  m_gameOverRequested = true;
+}
+
+void EngineApp::requestVictory()
+{
+  m_victoryRequested = true;
+}
+
+bool EngineApp::consumeGameOverRequested()
+{
+  const bool v = m_gameOverRequested;
+  m_gameOverRequested = false;
+  return v;
+}
+
+bool EngineApp::consumeVictoryRequested()
+{
+  const bool v = m_victoryRequested;
+  m_victoryRequested = false;
+  return v;
+}
+
+void EngineApp::clearWorld()
+{
+  delete m_world;
+  m_world = nullptr;
+  m_player = kInvalidEntity;
+  m_scoreEntity = kInvalidEntity;
+}
+
+void EngineApp::prepareGameplayWorld()
+{
+  clearWorld();
+  if (!m_resources) return;
+
+  m_world = new World();
+
+  GameWorld builder;
+  const GameWorldRefs refs = builder.build(*m_world, *m_resources);
+  m_player = refs.player;
+  m_scoreEntity = refs.scoreEntity;
+
+  m_gameOverRequested = false;
+  m_victoryRequested = false;
+
+  // Particle emitter follows the player (simple: emitter entity shares player's Transform via scripts later;
+  // for Step 11.1 we just spawn a centered emitter).
+  {
+    const EntityId pe = m_world->createEntity();
+    Transform t{};
+    t.px = 0.0f;
+    t.py = 0.0f;
+    t.pz = 0.0f;
+    m_world->add<Transform>(pe, t);
+
+    ParticleEmitter em{};
+    em.emitRate = 300.0f;
+    em.maxParticles = 800;
+    em.spawnRadius = 0.02f;
+    em.lifeMin = 0.4f;
+    em.lifeMax = 1.0f;
+    em.speedMin = 0.10f;
+    em.speedMax = 0.35f;
+    em.sizeMin = 0.008f;
+    em.sizeMax = 0.020f;
+    m_world->add<ParticleEmitter>(pe, std::move(em));
+  }
+}
+
 void EngineApp::getFrameStats(EngineFrameStats& outStats) const
 {
   outStats = m_frameStats;
@@ -390,8 +364,7 @@ void EngineApp::shutdown()
   delete m_resources;
   m_resources = nullptr;
 
-  delete m_world;
-  m_world = nullptr;
+  clearWorld();
   m_testEntities.clear();
 
   delete m_input;

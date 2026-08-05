@@ -2,6 +2,7 @@
 
 #include "EngineAPI.hpp"
 #include "Renderer/Resources/Handles.hpp"
+#include "ECS/EntityId.hpp"
 
 #include <cstdint>
 #include <string>
@@ -19,6 +20,7 @@ class ScriptSystem;
 class StateMachine;
 class ParticleSystem;
 class ResourceManager;
+struct ScoreComponent;
 
 class EngineApp
 {
@@ -34,6 +36,12 @@ public:
   void onResize(int32_t width, int32_t height);
   void onWin32Message(uint32_t msg, uintptr_t wParam, intptr_t lParam);
   void requestQuit();
+  void requestGameOver();
+  void requestVictory();
+  bool consumeGameOverRequested();
+  bool consumeVictoryRequested();
+  void prepareGameplayWorld();
+  void clearWorld();
   void getFrameStats(EngineFrameStats& outStats) const;
   void shutdown();
 
@@ -67,5 +75,11 @@ private:
 
   // Re-used buffer to avoid per-frame allocations.
   std::vector<std::pair<EntityId, EntityId>> m_overlapPairs;
+
+  // Game session (Step 11)
+  bool m_gameOverRequested = false;
+  bool m_victoryRequested = false;
+  EntityId m_player = kInvalidEntity;
+  EntityId m_scoreEntity = kInvalidEntity;
 };
 

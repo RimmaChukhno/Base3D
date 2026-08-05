@@ -141,22 +141,17 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int)
       wchar_t title[256]{};
       swprintf_s(
         title,
-        L"Tron - Step 10 (Resources) | FPS: %.1f | dt: %.3f ms | State: %d | Ent: %d | Draws: %d | PartVtx: %d | Pairs: %d | Overlaps: %d | Res M/Mt/Sh/Tex: %d/%d/%d/%d | Mouse: %d,%d | Wheel: %d",
+        L"Tron Arena | FPS: %.1f | dt: %.3f ms | State: %d | Score: %d | Time: %.1f | Ent: %d | Draws: %d | PartVtx: %d | Overlaps: %d | Res M/Mt/Sh/Tex: %d/%d/%d/%d",
         stats.fps,
         stats.deltaSeconds * 1000.0f,
         stats.stateId,
+        stats.gameScore,
+        stats.gameTimeAlive,
         stats.entityCount,
         stats.drawCount,
         stats.particleVertexCount,
-        stats.collisionPairs,
         stats.collisionOverlaps,
-        stats.resMeshes,
-        stats.resMaterials,
-        stats.resShaders,
-        stats.resTextures,
-        stats.mouseX,
-        stats.mouseY,
-        stats.wheelDelta
+        stats.resMeshes, stats.resMaterials, stats.resShaders, stats.resTextures
       );
       SetWindowTextW(hwnd, title);
     }

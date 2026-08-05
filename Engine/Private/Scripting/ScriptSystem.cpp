@@ -8,8 +8,9 @@
 
 #include "Input/InputManager.hpp"
 #include "Time/TimeSystem.hpp"
+#include "EngineApp.hpp"
 
-void ScriptSystem::update(World& world, InputManager& input, TimeSystem& time)
+void ScriptSystem::update(World& world, EngineApp& app, InputManager& input, TimeSystem& time)
 {
   auto* st = world.tryStorage<ScriptComponent>();
   if (!st) return;
@@ -25,7 +26,7 @@ void ScriptSystem::update(World& world, InputManager& input, TimeSystem& time)
     ScriptComponent& sc = comps[i];
     if (!sc.script) continue;
 
-    sc.script->setContext(ScriptContext{ &world, e, &input, &time });
+    sc.script->setContext(ScriptContext{ &world, e, &app, &input, &time });
 
     if (!sc.started)
     {
@@ -42,14 +43,14 @@ void ScriptSystem::onCollision(World& world, EntityId a, EntityId b)
   auto* sa = world.tryGet<ScriptComponent>(a);
   if (sa && sa->script && sa->started)
   {
-    sa->script->setContext(ScriptContext{ &world, a, nullptr, nullptr });
+    sa->script->setContext(ScriptContext{ &world, a, nullptr, nullptr, nullptr });
     sa->script->OnCollision(b);
   }
 
   auto* sb = world.tryGet<ScriptComponent>(b);
   if (sb && sb->script && sb->started)
   {
-    sb->script->setContext(ScriptContext{ &world, b, nullptr, nullptr });
+    sb->script->setContext(ScriptContext{ &world, b, nullptr, nullptr, nullptr });
     sb->script->OnCollision(a);
   }
 }

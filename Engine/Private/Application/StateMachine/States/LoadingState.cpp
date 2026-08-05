@@ -1,10 +1,12 @@
 #include "LoadingState.hpp"
 
 #include "Time/TimeSystem.hpp"
+#include "EngineApp.hpp"
 
 void LoadingState::onEnter(StateContext& ctx)
 {
   m_enterTime = ctx.time.totalSeconds();
+  ctx.app.prepareGameplayWorld();
 }
 
 void LoadingState::update(StateContext& ctx)

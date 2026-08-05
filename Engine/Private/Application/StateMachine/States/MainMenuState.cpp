@@ -5,6 +5,13 @@
 
 #include <Windows.h>
 
+void MainMenuState::onEnter(StateContext& ctx)
+{
+  // Ensure no stale gameplay flags.
+  (void)ctx.app.consumeGameOverRequested();
+  (void)ctx.app.consumeVictoryRequested();
+}
+
 void MainMenuState::update(StateContext& ctx)
 {
   // Menu: freeze gameplay, keep rendering background.

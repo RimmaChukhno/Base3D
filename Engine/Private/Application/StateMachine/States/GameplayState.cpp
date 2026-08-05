@@ -14,24 +14,22 @@ void GameplayState::update(StateContext& ctx)
   ctx.plan.runParticles = true;
   ctx.plan.runRender = true;
 
-  // P toggles pause.
-  if (ctx.input.wasKeyPressed('P'))
+  // Game result transitions (Step 11).
+  if (ctx.app.consumeGameOverRequested())
   {
-    ctx.transition(GameStateId::Pause);
+    ctx.transition(GameStateId::GameOver);
     return;
   }
-
-  // Debug transitions for validation (temporary):
-  // - K => Victory
-  // - L => GameOver
-  if (ctx.input.wasKeyPressed('K'))
+  if (ctx.app.consumeVictoryRequested())
   {
     ctx.transition(GameStateId::Victory);
     return;
   }
-  if (ctx.input.wasKeyPressed('L'))
+
+  // P toggles pause.
+  if (ctx.input.wasKeyPressed('P'))
   {
-    ctx.transition(GameStateId::GameOver);
+    ctx.transition(GameStateId::Pause);
     return;
   }
 

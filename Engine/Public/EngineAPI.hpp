@@ -30,6 +30,8 @@ struct EngineFrameStats
   int32_t resMaterials;
   int32_t resShaders;
   int32_t resTextures;
+  int32_t gameScore;
+  float gameTimeAlive;
   int32_t mouseX;
   int32_t mouseY;
   int32_t mouseDeltaX;
