@@ -16,6 +16,7 @@
 #include "Game/Scripts/PlayerControllerScript.hpp"
 #include "Game/Scripts/EnemyAIScript.hpp"
 #include "Game/Scripts/GameDirectorScript.hpp"
+#include "Game/Scripts/TrailSpawnerScript.hpp"
 
 #include <memory>
 
@@ -85,7 +86,15 @@ GameWorldRefs GameWorld::build(World& world, ResourceManager& resources)
 
     world.add<Collider>(refs.player, Collider::makeAabb(0.5f, 0.5f, 0.01f));
     world.add<PlayerTag>(refs.player, PlayerTag{});
-    world.add<ScriptComponent>(refs.player, ScriptComponent{ std::make_unique<PlayerControllerScript>() });
+    auto& sc = world.add<ScriptComponent>(refs.player, ScriptComponent{});
+    sc.add(std::make_unique<PlayerControllerScript>());
+
+    auto trail = std::make_unique<TrailSpawnerScript>();
+    trail->setColor(0.2f, 1.0f, 0.4f);
+    trail->setSpacing(0.120f);
+    trail->setSegmentSize(0.018f);
+    trail->setTtl(5.0f);
+    sc.add(std::move(trail));
   }
 
   // One enemy (Step 11.1)
@@ -109,7 +118,15 @@ GameWorldRefs GameWorld::build(World& world, ResourceManager& resources)
 
     auto ai = std::make_unique<EnemyAIScript>();
     ai->setTarget(refs.player);
-    world.add<ScriptComponent>(refs.enemy, ScriptComponent{ std::move(ai) });
+    auto& sc = world.add<ScriptComponent>(refs.enemy, ScriptComponent{});
+    sc.add(std::move(ai));
+
+    auto trail = std::make_unique<TrailSpawnerScript>();
+    trail->setColor(1.0f, 0.35f, 0.35f);
+    trail->setSpacing(0.140f);
+    trail->setSegmentSize(0.018f);
+    trail->setTtl(5.0f);
+    sc.add(std::move(trail));
   }
 
   return refs;

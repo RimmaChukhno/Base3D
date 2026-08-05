@@ -12,6 +12,10 @@
 
 void ScriptSystem::update(World& world, EngineApp& app, InputManager& input, TimeSystem& time)
 {
+  m_app = &app;
+  m_input = &input;
+  m_time = &time;
+
   auto* st = world.tryStorage<ScriptComponent>();
   if (!st) return;
 
@@ -24,34 +28,46 @@ void ScriptSystem::update(World& world, EngineApp& app, InputManager& input, Tim
   {
     const EntityId e = entities[i];
     ScriptComponent& sc = comps[i];
-    if (!sc.script) continue;
+    if (sc.scripts.empty()) continue;
 
-    sc.script->setContext(ScriptContext{ &world, e, &app, &input, &time });
-
-    if (!sc.started)
+    for (auto& slot : sc.scripts)
     {
-      sc.script->Start();
-      sc.started = true;
-    }
+      if (!slot.script) continue;
+      slot.script->setContext(ScriptContext{ &world, e, &app, &input, &time });
 
-    sc.script->Update(dt);
+      if (!slot.started)
+      {
+        slot.script->Start();
+        slot.started = true;
+      }
+
+      slot.script->Update(dt);
+    }
   }
 }
 
 void ScriptSystem::onCollision(World& world, EntityId a, EntityId b)
 {
   auto* sa = world.tryGet<ScriptComponent>(a);
-  if (sa && sa->script && sa->started)
+  if (sa && !sa->scripts.empty())
   {
-    sa->script->setContext(ScriptContext{ &world, a, nullptr, nullptr, nullptr });
-    sa->script->OnCollision(b);
+    for (auto& slot : sa->scripts)
+    {
+      if (!slot.script || !slot.started) continue;
+      slot.script->setContext(ScriptContext{ &world, a, m_app, m_input, m_time });
+      slot.script->OnCollision(b);
+    }
   }
 
   auto* sb = world.tryGet<ScriptComponent>(b);
-  if (sb && sb->script && sb->started)
+  if (sb && !sb->scripts.empty())
   {
-    sb->script->setContext(ScriptContext{ &world, b, nullptr, nullptr, nullptr });
-    sb->script->OnCollision(a);
+    for (auto& slot : sb->scripts)
+    {
+      if (!slot.script || !slot.started) continue;
+      slot.script->setContext(ScriptContext{ &world, b, m_app, m_input, m_time });
+      slot.script->OnCollision(a);
+    }
   }
 }
 

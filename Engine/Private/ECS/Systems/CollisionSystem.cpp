@@ -4,6 +4,7 @@
 #include "ECS/Components/Transform.hpp"
 #include "ECS/Components/Collider.hpp"
 #include "ECS/Components/MeshRenderer.hpp"
+#include "Game/Components/TrailTag.hpp"
 
 #include "Physics/Collision/CollisionPrimitives.hpp"
 #include "Physics/Collision/Intersection.hpp"
@@ -100,14 +101,18 @@ CollisionStats CollisionSystem::update(World& world, D3D11Renderer& renderer, in
     // If entity has a MeshRenderer, tint it so collisions are obvious without debug lines.
     if (auto* mr = world.tryGet<MeshRenderer>(it.e))
     {
-      if (hit)
+      // Don't override trail visuals (they are the gameplay element).
+      if (!world.has<TrailTag>(it.e))
       {
-        mr->tintR = 1.0f; mr->tintG = 0.2f; mr->tintB = 0.2f;
-      }
-      else
-      {
-        // Restore a neutral-ish tint (keep alpha).
-        mr->tintR = 0.7f; mr->tintG = 0.8f; mr->tintB = 0.9f;
+        if (hit)
+        {
+          mr->tintR = 1.0f; mr->tintG = 0.2f; mr->tintB = 0.2f;
+        }
+        else
+        {
+          // Restore a neutral-ish tint (keep alpha).
+          mr->tintR = 0.7f; mr->tintG = 0.8f; mr->tintB = 0.9f;
+        }
       }
     }
   }

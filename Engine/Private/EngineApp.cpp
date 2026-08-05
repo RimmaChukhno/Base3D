@@ -26,6 +26,9 @@
 #include "Game/Components/PlayerTag.hpp"
 #include "Game/Components/EnemyTag.hpp"
 #include "Game/Components/WallTag.hpp"
+#include "Game/Components/TrailTag.hpp"
+#include "Game/Components/TrailSegment.hpp"
+#include "Game/Systems/TrailSystem.hpp"
 
 #include <Windows.h>
 #include <cmath>
@@ -84,6 +87,7 @@ bool EngineApp::init(const EngineConfig& cfg)
   m_stateMachine = new StateMachine();
   m_particleSystem = new ParticleSystem();
   m_resources = new ResourceManager(m_renderer->device(), *m_renderer, m_assetsRoot);
+  m_trailSystem = new TrailSystem();
 
   // Built-in resources (dedup, Step 10).
   m_triMesh = m_resources->getOrCreateTriangleMesh();
@@ -160,6 +164,12 @@ void EngineApp::tick()
 
   // Motion stage is now script-driven for Step 11 (player/enemy scripts).
   if (!plan.runMotion) m_frameStats.movingCount = 0;
+
+  // Trails TTL cleanup (Step 11.2)
+  if (plan.runMotion && m_world && m_trailSystem)
+  {
+    m_trailSystem->update(*m_world, *m_time);
+  }
 
   // Update stats for external debugging (Game window title).
   m_frameStats.deltaSeconds = m_time->deltaSeconds();
@@ -332,6 +342,41 @@ void EngineApp::prepareGameplayWorld()
   }
 }
 
+EntityId EngineApp::spawnTrailSegment(EntityId owner, float x, float y, float size, float ttl,
+                                      float r, float g, float b)
+{
+  if (!m_world) return kInvalidEntity;
+
+  const EntityId seg = m_world->createEntity();
+
+  Transform t{};
+  t.px = x;
+  t.py = y;
+  t.pz = 0.0f;
+  t.sx = size;
+  t.sy = size;
+  t.sz = 1.0f;
+  m_world->add<Transform>(seg, t);
+
+  MeshRenderer mr{};
+  mr.mesh = m_quadMesh;
+  mr.material = m_meshColorMat;
+  mr.tintR = r; mr.tintG = g; mr.tintB = b; mr.tintA = 1.0f;
+  m_world->add<MeshRenderer>(seg, mr);
+
+  m_world->add<Collider>(seg, Collider::makeAabb(0.5f, 0.5f, 0.01f));
+  m_world->add<TrailTag>(seg, TrailTag{});
+
+  TrailSegment ts{};
+  ts.owner = owner;
+  ts.ttl = ttl;
+  ts.ttlMax = ttl;
+  ts.spawnTime = m_time ? m_time->totalSeconds() : 0.0f;
+  m_world->add<TrailSegment>(seg, ts);
+
+  return seg;
+}
+
 void EngineApp::getFrameStats(EngineFrameStats& outStats) const
 {
   outStats = m_frameStats;
@@ -363,6 +408,9 @@ void EngineApp::shutdown()
 
   delete m_resources;
   m_resources = nullptr;
+
+  delete m_trailSystem;
+  m_trailSystem = nullptr;
 
   clearWorld();
   m_testEntities.clear();

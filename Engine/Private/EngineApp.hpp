@@ -21,6 +21,7 @@ class StateMachine;
 class ParticleSystem;
 class ResourceManager;
 struct ScoreComponent;
+class TrailSystem;
 
 class EngineApp
 {
@@ -42,6 +43,8 @@ public:
   bool consumeVictoryRequested();
   void prepareGameplayWorld();
   void clearWorld();
+  EntityId spawnTrailSegment(EntityId owner, float x, float y, float size, float ttl,
+                             float r, float g, float b);
   void getFrameStats(EngineFrameStats& outStats) const;
   void shutdown();
 
@@ -72,6 +75,9 @@ private:
   MaterialHandle m_meshColorMat = kInvalidMaterial;
   MaterialHandle m_particleMat = kInvalidMaterial;
   uint32_t m_particleTex = 0xFFFFFFFFu; // TextureHandle (kept uint32_t here to avoid public include)
+
+  // Trails (Step 11.2)
+  TrailSystem* m_trailSystem = nullptr;
 
   // Re-used buffer to avoid per-frame allocations.
   std::vector<std::pair<EntityId, EntityId>> m_overlapPairs;
