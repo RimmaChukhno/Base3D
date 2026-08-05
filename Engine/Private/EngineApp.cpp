@@ -301,6 +301,201 @@ void EngineApp::clearWorld()
   m_world = nullptr;
   m_player = kInvalidEntity;
   m_scoreEntity = kInvalidEntity;
+  m_menuStart = kInvalidEntity;
+  m_menuExit = kInvalidEntity;
+  m_menuTitleText.clear();
+  m_menuStartText.clear();
+  m_menuExitText.clear();
+  m_menuHintText.clear();
+}
+
+void EngineApp::prepareMenuWorld()
+{
+  clearWorld();
+  if (!m_resources) return;
+
+  m_world = new World();
+
+  struct Glyph
+  {
+    const char* rows[7];
+  };
+
+  auto glyphFor = [](char c) -> Glyph
+  {
+    switch (c)
+    {
+    case 'A': return { { " ### ", "#   #", "#   #", "#####", "#   #", "#   #", "#   #" } };
+    case 'E': return { { "#####", "#    ", "#    ", "#### ", "#    ", "#    ", "#####" } };
+    case 'I': return { { "#####", "  #  ", "  #  ", "  #  ", "  #  ", "  #  ", "#####" } };
+    case 'N': return { { "#   #", "##  #", "# # #", "#  ##", "#   #", "#   #", "#   #" } };
+    case 'O': return { { " ### ", "#   #", "#   #", "#   #", "#   #", "#   #", " ### " } };
+    case 'P': return { { "#### ", "#   #", "#   #", "#### ", "#    ", "#    ", "#    " } };
+    case 'R': return { { "#### ", "#   #", "#   #", "#### ", "# #  ", "#  # ", "#   #" } };
+    case 'S': return { { " ####", "#    ", "#    ", " ### ", "    #", "    #", "#### " } };
+    case 'T': return { { "#####", "  #  ", "  #  ", "  #  ", "  #  ", "  #  ", "  #  " } };
+    case 'X': return { { "#   #", "#   #", " # # ", "  #  ", " # # ", "#   #", "#   #" } };
+    case ' ': return { { "     ", "     ", "     ", "     ", "     ", "     ", "     " } };
+    default:  return { { "?????", "?????", "?????", "?????", "?????", "?????", "?????" } };
+    }
+  };
+
+  auto spawnBlockText = [&](const char* text, float centerX, float centerY, float pixel, float gap,
+                            float r, float g, float b, float a) -> std::vector<EntityId>
+  {
+    std::vector<EntityId> out;
+    if (!m_world) return out;
+    if (!text) return out;
+
+    int len = 0;
+    for (const char* p = text; *p; ++p) ++len;
+
+    const float charW = 5.0f * pixel + 4.0f * gap;
+    const float advance = charW + (3.0f * gap);
+    const float totalW = (len > 0) ? (len * advance - (3.0f * gap)) : 0.0f;
+    const float startX = centerX - totalW * 0.5f;
+
+    float penX = startX;
+    for (const char* p = text; *p; ++p)
+    {
+      const Glyph gl = glyphFor(*p);
+
+      // Build 5x7 pixels. Row 0 is top.
+      for (int row = 0; row < 7; ++row)
+      {
+        const char* rr = gl.rows[row];
+        for (int col = 0; col < 5; ++col)
+        {
+          const char ch = rr[col];
+          if (ch != '#') continue;
+
+          const EntityId e = m_world->createEntity();
+
+          Transform t{};
+          t.px = penX + col * (pixel + gap) + pixel * 0.5f;
+          t.py = centerY + (3 - row) * (pixel + gap); // center around Y
+          t.pz = 0.0f;
+          t.sx = pixel;
+          t.sy = pixel;
+          t.sz = 1.0f;
+          m_world->add<Transform>(e, t);
+
+          MeshRenderer mr{};
+          mr.mesh = m_quadMesh;
+          mr.material = m_meshColorMat;
+          mr.tintR = r; mr.tintG = g; mr.tintB = b; mr.tintA = a;
+          m_world->add<MeshRenderer>(e, mr);
+          out.push_back(e);
+        }
+      }
+
+      penX += advance;
+    }
+
+    return out;
+  };
+
+  // Background panel (subtle)
+  {
+    const EntityId bg = m_world->createEntity();
+    Transform t{};
+    t.px = 0.0f;
+    t.py = 0.0f;
+    t.pz = 0.0f;
+    t.sx = 1.40f;
+    t.sy = 0.80f;
+    t.sz = 1.0f;
+    m_world->add<Transform>(bg, t);
+
+    MeshRenderer mr{};
+    mr.mesh = m_quadMesh;
+    mr.material = m_meshColorMat;
+    mr.tintR = 0.10f; mr.tintG = 0.14f; mr.tintB = 0.22f; mr.tintA = 0.65f;
+    m_world->add<MeshRenderer>(bg, mr);
+  }
+
+  // Title
+  m_menuTitleText = spawnBlockText("TRON", 0.0f, 0.52f, 0.030f, 0.006f, 0.25f, 0.95f, 1.0f, 0.95f);
+
+  // "Buttons" (we'll highlight selection via tint).
+  auto makeButton = [&](float y) -> EntityId
+  {
+    const EntityId e = m_world->createEntity();
+    Transform t{};
+    t.px = 0.0f;
+    t.py = y;
+    t.pz = 0.0f;
+    t.sx = 0.55f;
+    t.sy = 0.12f;
+    t.sz = 1.0f;
+    m_world->add<Transform>(e, t);
+
+    MeshRenderer mr{};
+    mr.mesh = m_quadMesh;
+    mr.material = m_meshColorMat;
+    mr.tintR = 0.25f; mr.tintG = 0.25f; mr.tintB = 0.25f; mr.tintA = 0.95f;
+    m_world->add<MeshRenderer>(e, mr);
+    return e;
+  };
+
+  m_menuStart = makeButton(0.12f);
+  m_menuExit = makeButton(-0.12f);
+
+  // Labels
+  m_menuStartText = spawnBlockText("START", 0.0f, 0.12f, 0.020f, 0.0045f, 0.10f, 0.10f, 0.10f, 0.98f);
+  m_menuExitText  = spawnBlockText("EXIT",  0.0f, -0.12f, 0.020f, 0.0045f, 0.10f, 0.10f, 0.10f, 0.98f);
+  m_menuHintText  = spawnBlockText("PRESS ENTER", 0.0f, -0.46f, 0.014f, 0.0035f, 0.80f, 0.85f, 0.95f, 0.80f);
+
+  setMenuSelection(0);
+}
+
+void EngineApp::setMenuSelection(int selectedIndex)
+{
+  if (!m_world) return;
+  if (m_menuStart == kInvalidEntity || m_menuExit == kInvalidEntity) return;
+
+  auto* startMr = m_world->tryGet<MeshRenderer>(m_menuStart);
+  auto* exitMr = m_world->tryGet<MeshRenderer>(m_menuExit);
+  if (!startMr || !exitMr) return;
+
+  const auto setTint = [](MeshRenderer& mr, float r, float g, float b, float a)
+  {
+    mr.tintR = r; mr.tintG = g; mr.tintB = b; mr.tintA = a;
+  };
+
+  const bool startSel = (selectedIndex == 0);
+  if (startSel)
+  {
+    setTint(*startMr, 0.20f, 0.95f, 0.45f, 0.98f); // Start highlighted (green)
+    setTint(*exitMr,  0.30f, 0.30f, 0.30f, 0.90f); // Exit muted
+  }
+  else
+  {
+    setTint(*startMr, 0.30f, 0.30f, 0.30f, 0.90f);
+    setTint(*exitMr,  0.95f, 0.25f, 0.25f, 0.98f); // Exit highlighted (red)
+  }
+
+  auto tintEntities = [&](const std::vector<EntityId>& ents, float r, float g, float b, float a)
+  {
+    for (const EntityId e : ents)
+    {
+      if (auto* mr = m_world->tryGet<MeshRenderer>(e))
+      {
+        mr->tintR = r; mr->tintG = g; mr->tintB = b; mr->tintA = a;
+      }
+    }
+  };
+
+  if (startSel)
+  {
+    tintEntities(m_menuStartText, 0.05f, 0.08f, 0.05f, 0.98f);
+    tintEntities(m_menuExitText,  0.10f, 0.10f, 0.10f, 0.80f);
+  }
+  else
+  {
+    tintEntities(m_menuStartText, 0.10f, 0.10f, 0.10f, 0.80f);
+    tintEntities(m_menuExitText,  0.10f, 0.05f, 0.05f, 0.98f);
+  }
 }
 
 void EngineApp::prepareGameplayWorld()

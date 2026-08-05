@@ -41,6 +41,8 @@ public:
   void requestVictory();
   bool consumeGameOverRequested();
   bool consumeVictoryRequested();
+  void prepareMenuWorld();
+  void setMenuSelection(int selectedIndex); // 0=Start, 1=Exit
   void prepareGameplayWorld();
   void clearWorld();
   EntityId spawnTrailSegment(EntityId owner, float x, float y, float size, float ttl,
@@ -87,5 +89,13 @@ private:
   bool m_victoryRequested = false;
   EntityId m_player = kInvalidEntity;
   EntityId m_scoreEntity = kInvalidEntity;
+
+  // Main menu (minimal UI using quads)
+  EntityId m_menuStart = kInvalidEntity;
+  EntityId m_menuExit = kInvalidEntity;
+  std::vector<EntityId> m_menuTitleText;
+  std::vector<EntityId> m_menuStartText;
+  std::vector<EntityId> m_menuExitText;
+  std::vector<EntityId> m_menuHintText;
 };
 
