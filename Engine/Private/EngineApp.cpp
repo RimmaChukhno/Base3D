@@ -512,29 +512,6 @@ void EngineApp::prepareGameplayWorld()
 
   m_gameOverRequested = false;
   m_victoryRequested = false;
-
-  // Particle emitter follows the player (simple: emitter entity shares player's Transform via scripts later;
-  // for Step 11.1 we just spawn a centered emitter).
-  {
-    const EntityId pe = m_world->createEntity();
-    Transform t{};
-    t.px = 0.0f;
-    t.py = 0.0f;
-    t.pz = 0.0f;
-    m_world->add<Transform>(pe, t);
-
-    ParticleEmitter em{};
-    em.emitRate = 300.0f;
-    em.maxParticles = 800;
-    em.spawnRadius = 0.02f;
-    em.lifeMin = 0.4f;
-    em.lifeMax = 1.0f;
-    em.speedMin = 0.10f;
-    em.speedMax = 0.35f;
-    em.sizeMin = 0.008f;
-    em.sizeMax = 0.020f;
-    m_world->add<ParticleEmitter>(pe, std::move(em));
-  }
 }
 
 EntityId EngineApp::spawnTrailSegment(EntityId owner, float x, float y, float size, float ttl,
